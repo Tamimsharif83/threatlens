@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `TL_HOST_PORT` (Compose) to choose the host port when 8080 is taken, plus a
+  `.env.example`; README section "Changing the port".
+- Regression guards that ThreatLens is only published on `127.0.0.1`: a pytest
+  check of the Compose files and every documented `docker run` command, and a CI
+  step that verifies the rendered Compose config and the running container.
+
 ## [0.1.0] - 2026-11-08
 
 Phase 0: plan and scaffold.

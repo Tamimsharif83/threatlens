@@ -12,7 +12,10 @@ services:
     container_name: threatlens
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080" # localhost only; put a TLS reverse proxy in front to expose it
+      # Localhost only (enforced by tests/test_deployment.py). Change the host port
+      # with TL_HOST_PORT in .env (see .env.example) if 8080 is already taken.
+      # To expose ThreatLens, put a TLS reverse proxy in front instead of widening this.
+      - "127.0.0.1:${TL_HOST_PORT:-8080}:8080"
     volumes:
       - threatlens-data:/data
     environment:

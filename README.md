@@ -31,7 +31,8 @@ Open <http://127.0.0.1:8080> and sign in as `admin`.
 
 The port is bound to `127.0.0.1` on purpose: ThreatLens is only reachable from
 your own machine. To expose it, put a TLS reverse proxy in front (see
-[Configuration](#configuration)).
+[Configuration](#configuration)). Port 8080 taken? See
+[Changing the port](#changing-the-port).
 
 **Hardened run** (recommended; the image supports it out of the box):
 
@@ -46,11 +47,32 @@ docker run -d --name threatlens -p 127.0.0.1:8080:8080 \
 
 ```bash
 git clone https://github.com/Tamimsharif83/threatlens.git && cd threatlens
+cp .env.example .env          # optional: change the port or set an admin password
 docker compose up -d
 docker compose logs threatlens | grep -A3 "first run"
 ```
 
 Lost the admin password? `docker exec -it threatlens threatlens user reset-password admin`
+
+### Changing the port
+
+ThreatLens listens on port 8080 inside the container. If 8080 is already in use
+on your machine (`Bind for 0.0.0.0:8080 failed: port is already allocated` means
+*another* container or program holds it), pick a different host port. ThreatLens
+stays bound to `127.0.0.1` either way.
+
+- **Docker Compose:** set `TL_HOST_PORT` in `.env`, e.g. `TL_HOST_PORT=8090`,
+  then `docker compose up -d` and open <http://127.0.0.1:8090>.
+  For a one-off: `TL_HOST_PORT=8090 docker compose up -d`.
+- **docker run:** change the first number of `-p`, keeping the `127.0.0.1:` prefix:
+  `-p 127.0.0.1:8090:8080`.
+
+To see what holds a port: `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8080`
+(or `ss -ltnp | grep 8080` for non-Docker programs).
+
+Never drop the `127.0.0.1:` prefix to "fix" a conflict: that publishes ThreatLens
+on every network interface. A test (`tests/test_deployment.py`) fails if the
+Compose file or the documented commands stop binding to localhost.
 
 ## Features
 
@@ -110,7 +132,8 @@ All settings are environment variables with the `TL_` prefix.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TL_PORT` | `8080` | HTTP port inside the container |
+| `TL_HOST_PORT` | `8080` | **Compose only:** host port published on `127.0.0.1` (set in `.env`; see [Changing the port](#changing-the-port)) |
+| `TL_PORT` | `8080` | HTTP port inside the container (normally leave as is; change `TL_HOST_PORT` instead) |
 | `TL_HOST` | `0.0.0.0` in the image, `127.0.0.1` otherwise | Bind address |
 | `TL_DATA_DIR` | `/data` in the image | Where all state is kept |
 | `TL_ADMIN_USERNAME` | `admin` | First-run admin username |
