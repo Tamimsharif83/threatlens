@@ -1,0 +1,48 @@
+# --- secrets & local config (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+docker-compose.override.yml
+
+# --- runtime data & logs (never commit real logs) ---
+data/
+/datasets/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+*.evtx
+*.gz
+*.zip
+inbox/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
