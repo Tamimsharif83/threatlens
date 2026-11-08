@@ -1,0 +1,31 @@
+# Build-from-source path:
+#   git clone https://github.com/Tamimsharif83/threatlens && cd threatlens
+#   docker compose up -d
+#
+# Personal settings (extra mounts, a fixed admin password, ...) go in a
+# gitignored docker-compose.override.yml — see docker-compose.override.yml.example.
+
+services:
+  threatlens:
+    build: .
+    image: threatlens:local
+    container_name: threatlens
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080" # localhost only; put a TLS reverse proxy in front to expose it
+    volumes:
+      - threatlens-data:/data
+    environment:
+      TL_LOG_LEVEL: INFO
+      # Leave empty to get a random admin password printed once in `docker compose logs`.
+      TL_ADMIN_PASSWORD: ${TL_ADMIN_PASSWORD:-}
+    # Hardening: read-only root filesystem, no Linux capabilities, no privilege escalation.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+
+volumes:
+  threatlens-data:

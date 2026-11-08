@@ -1,0 +1,14 @@
+# Copy to docker-compose.override.yml (gitignored) for local-only settings.
+# Docker Compose merges it automatically with docker-compose.yml.
+
+services:
+  threatlens:
+    environment:
+      TL_DEFAULT_TIMEZONE: Asia/Dhaka
+      TL_RETENTION_DAYS: "14"
+    volumes:
+      # Watch folder (Phase 1): drop log files here and ThreatLens ingests them.
+      # Mounted read-only — ThreatLens never modifies your source logs.
+      - /path/to/your/logs:/data/inbox:ro
+      # Your own Sigma rules (Phase 2).
+      - ./my-rules:/data/rules:ro
