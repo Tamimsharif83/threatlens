@@ -28,7 +28,32 @@ def build_templates() -> Jinja2Templates:
     # Relative URLs (work behind any reverse proxy) with a version for cache busting.
     env.globals["static"] = lambda path: f"/static/{path}?v={__version__}"
     env.filters["iso"] = ms_to_iso
+    env.filters["dt"] = format_dt
+    env.filters["num"] = format_num
+    env.filters["bytes"] = format_bytes
     return Jinja2Templates(env=env)
+
+
+def format_dt(ms: int | None) -> str:
+    """``2026-11-08 10:00:00 UTC`` (or an em dash for missing values)."""
+    if ms is None:
+        return "\u2014"
+    return ms_to_iso(ms).replace("T", " ")[:19] + " UTC"
+
+
+def format_num(n: int | float | None) -> str:
+    return "\u2014" if n is None else f"{n:,}"
+
+
+def format_bytes(n: int | float | None) -> str:
+    if n is None:
+        return "\u2014"
+    value = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"  # pragma: no cover
 
 
 def render(

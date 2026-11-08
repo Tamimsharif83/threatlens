@@ -1,0 +1,36 @@
+{% if batches %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr>
+      <th scope="col">#</th>
+      <th scope="col">Started</th>
+      <th scope="col">Source</th>
+      <th scope="col">File</th>
+      <th scope="col">Type</th>
+      <th scope="col">Status</th>
+      <th scope="col" class="num">Events</th>
+      <th scope="col" class="num">Duplicates</th>
+      <th scope="col" class="num">Malformed</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in batches %}
+    <tr>
+      <td><a href="/ingest/batches/{{ b.id }}">{{ b.id }}</a></td>
+      <td class="nowrap">{{ b.started_at|dt }}</td>
+      <td>{{ b.source }}</td>
+      <td class="mono wrap">{{ b.file_name }}</td>
+      <td>{{ b.parser }}<span class="muted small"> · {{ b.origin }}</span></td>
+      <td><span class="badge status-{{ b.status }}">{{ b.status }}</span></td>
+      <td class="num">{{ b.inserted|num }}</td>
+      <td class="num">{{ b.duplicates|num }}</td>
+      <td class="num">{% if b.malformed %}<a href="/ingest/batches/{{ b.id }}#malformed">{{ b.malformed|num }}</a>{% else %}0{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">Nothing ingested yet.</p>
+{% endif %}

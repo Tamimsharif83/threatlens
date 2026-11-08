@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
+from threatlens import stats
 from threatlens.storage.db import schema_version
+from threatlens.timeutil import now_ms
 from threatlens.web.deps import DbDep, SessionDep
 from threatlens.web.templating import render
 
@@ -20,5 +22,9 @@ def overview(request: Request, session: SessionDep, db: DbDep) -> Response:
         {
             "active": "overview",
             "schema_version": schema_version(db),
+            "totals": stats.totals(db, now_ms()),
+            "top_ips": stats.top_values(db, "source.ip", 10),
+            "top_users": stats.top_values(db, "user.name", 10),
+            "batches": stats.recent_batches(db, 8),
         },
     )

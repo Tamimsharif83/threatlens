@@ -1,0 +1,8 @@
+{% for e in errors %}
+<div class="alert alert-error" role="alert">{{ e }}</div>
+{% endfor %}
+{% if accepted %}
+<div class="alert alert-ok" role="status">Queued for ingestion: {{ accepted|join(", ") }}</div>
+{% endif %}
+{# Out-of-band swap: replace #ingest-live so progress polling starts. #}
+{% with oob = true %}{% include "_ingest_live.html" %}{% endwith %}

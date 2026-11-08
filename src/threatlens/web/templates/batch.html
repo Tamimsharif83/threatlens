@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block title %}Batch {{ b.id }} · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <p><a href="/ingest">&larr; Ingest</a></p>
+  <h1>Ingest report · batch #{{ b.id }}</h1>
+  <p class="muted mono wrap">{{ b.file_name }}</p>
+</div>
+
+<section class="stat-grid" aria-label="Batch figures">
+  <div class="stat"><span class="stat-label">Status</span><span class="stat-value stat-value-sm"><span class="badge status-{{ b.status }}">{{ b.status }}</span></span></div>
+  <div class="stat"><span class="stat-label">Lines read</span><span class="stat-value">{{ b.lines_total|num }}</span></div>
+  <div class="stat"><span class="stat-label">Events stored</span><span class="stat-value">{{ b.events_inserted|num }}</span></div>
+  <div class="stat"><span class="stat-label">Duplicates skipped</span><span class="stat-value">{{ b.duplicates|num }}</span></div>
+  <div class="stat"><span class="stat-label">Malformed</span><span class="stat-value">{{ b.malformed|num }}</span></div>
+</section>
+
+<section class="panel">
+  <h2>Details</h2>
+  <dl class="kv">
+    <dt>Source</dt><dd>{{ b.source }}</dd>
+    <dt>Log type</dt><dd>{{ b.parser }}</dd>
+    <dt>Origin</dt><dd>{{ b.origin }}{% if b.created_by %} · by {{ b.created_by }}{% endif %}</dd>
+    <dt>Started</dt><dd>{{ b.started_at|dt }}</dd>
+    <dt>Finished</dt><dd>{{ b.finished_at|dt }}</dd>
+    <dt>Event time range</dt><dd>{{ b.min_ts|dt }} &rarr; {{ b.max_ts|dt }}</dd>
+    {% if b.error %}<dt>Error</dt><dd class="error-text">{{ b.error }}</dd>{% endif %}
+  </dl>
+  {% if tables %}
+  <h3>Stored in</h3>
+  <table class="table compact">
+    <thead><tr><th scope="col">Event table</th><th scope="col" class="num">Events</th><th scope="col">Row ids</th></tr></thead>
+    <tbody>
+      {% for t in tables %}
+      <tr><td class="mono">{{ t.table_name }}</td><td class="num">{{ t.events|num }}</td><td class="mono small">{{ t.min_id }}&ndash;{{ t.max_id }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="panel" id="malformed">
+  <h2>Malformed lines</h2>
+  {% if samples %}
+  <p class="muted">The first {{ samples|length }} malformed line(s) of {{ b.malformed|num }}. Content is shown as plain text.</p>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">Line</th><th scope="col">Reason</th><th scope="col">Content</th></tr></thead>
+    <tbody>
+      {% for s in samples %}
+      <tr>
+        <td class="num">{{ s.record }}</td>
+        <td>{{ s.reason }}</td>
+        <td><pre class="logline">{{ s.line }}</pre></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No malformed lines.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -27,6 +27,13 @@ class NotAuthenticatedError(Exception):
     """Raised by `require_session`; turned into a redirect to /login (or a 401)."""
 
 
+class PasswordChangeRequiredError(Exception):
+    """The user logged in with a generated password; only /account is reachable."""
+
+
+PASSWORD_CHANGE_ALLOWED = frozenset({"/account", "/logout"})
+
+
 def get_settings(request: Request) -> Settings:
     settings: Settings = request.app.state.settings
     return settings
@@ -72,6 +79,8 @@ async def require_session(
     ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid or missing CSRF token")
     request.state.session = session
+    if session.user.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED:
+        raise PasswordChangeRequiredError
     return session
 
 

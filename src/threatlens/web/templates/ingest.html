@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block title %}Ingest · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Ingest</h1>
+  <p class="muted">Upload log files, or drop them into the <code>/data/inbox</code> watch folder (sub-folder name = source name).</p>
+</div>
+
+<section class="panel">
+  <h2>Upload logs</h2>
+  <form id="upload-form" class="stack" method="post" action="/ingest/upload" enctype="multipart/form-data"
+        hx-post="/ingest/upload" hx-encoding="multipart/form-data" hx-target="#upload-result" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label class="dropzone" id="dropzone">
+      <input type="file" name="files" id="files" multiple required
+             accept=".log,.txt,.json,.jsonl,.ndjson,.gz,.zip,.out,.csv">
+      <span class="dropzone-title">Drop log files here or click to choose</span>
+      <span class="muted small">.log .txt .json .jsonl .gz .zip · up to {{ max_files }} files, {{ max_upload_mb }} MB per upload</span>
+      <span class="dropzone-files muted small" id="dropzone-files" aria-live="polite"></span>
+    </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Log type</span>
+        <select name="parser">
+          {% for p in parser_types %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>Source name <small class="muted">(optional)</small></span>
+        <input type="text" name="source_name" maxlength="64" placeholder="e.g. web-prod" pattern="[A-Za-z0-9][A-Za-z0-9 ._:/@-]{0,63}">
+      </label>
+      <label class="field">
+        <span>Timezone for logs without one <small class="muted">(optional)</small></span>
+        <input type="text" name="timezone" maxlength="64" placeholder="e.g. Asia/Dhaka">
+      </label>
+      <label class="field">
+        <span>Web log format <small class="muted">(optional)</small></span>
+        <input type="text" name="web_format" maxlength="1024" list="web-presets" placeholder="auto: combined / common">
+        <datalist id="web-presets">{% for p in web_presets %}<option value="{{ p }}">{% endfor %}</datalist>
+      </label>
+      <label class="field">
+        <span>JSON field mapping <small class="muted">(for type "json")</small></span>
+        <select name="mapping">
+          <option value="">none</option>
+          {% for name, m in mappings.items() %}
+            {% if m is string %}
+              <option value="" disabled>{{ name }} (invalid: {{ m }})</option>
+            {% else %}
+              <option value="{{ name }}">{{ name }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Upload &amp; ingest</button>
+      <progress id="upload-progress" max="100" value="0" hidden></progress>
+    </div>
+  </form>
+  <div id="upload-result" aria-live="polite"></div>
+</section>
+
+{% include "_ingest_live.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ static('js/ingest.js') }}" defer></script>
+{% endblock %}

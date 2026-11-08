@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from threatlens import __version__
+from threatlens import __version__, stats
 from threatlens.web.deps import DbDep, SessionDep
 from threatlens.web.templating import render
 
@@ -37,6 +37,20 @@ def healthz(db: DbDep) -> Health:
 def me(session: SessionDep) -> Me:
     """The currently logged-in user."""
     return Me(username=session.user.username, role=session.user.role.value)
+
+
+class EventsOverTime(BaseModel):
+    buckets: list[int]
+    series: dict[str, list[int]]
+    bucket_ms: int
+
+
+@router.get("/api/v1/stats/events-over-time", tags=["stats"])
+def events_over_time(session: SessionDep, db: DbDep, days: int = 7) -> EventsOverTime:
+    """Event counts per hour (or day, for windows over a week) and log source,
+    over the last ``days`` of event time."""
+    data = stats.events_over_time(db, max(1, min(days, 90)))
+    return EventsOverTime(**data)
 
 
 # ---- API documentation (requires login; assets are vendored, no CDN)

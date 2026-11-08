@@ -6,8 +6,7 @@
   ("cases", "Cases", None, "Phase 5"),
   ("rules", "Rules", None, "Phase 2"),
   ("attack", "ATT&CK coverage", None, "Phase 6"),
-  ("ingest", "Ingest", None, "Phase 1"),
-  ("settings", "Settings", None, "Phase 1"),
+  ("ingest", "Ingest", "/ingest", None),
 ] %}
 {% block body %}
 <div class="shell">
@@ -17,10 +16,10 @@
       <span>ThreatLens</span>
     </a>
     <div class="topbar-right">
-      <span class="user-chip" title="Signed in">
+      <a class="user-chip" href="/account" title="Account and password">
         <span class="user-name">{{ user.username }}</span>
         <span class="badge badge-muted">{{ user.role.value }}</span>
-      </span>
+      </a>
       <form method="post" action="/logout" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
@@ -39,6 +38,9 @@
           {% endif %}
         </li>
       {% endfor %}
+      {% if user.is_admin %}
+        <li><a href="/settings" {% if active == "settings" %}aria-current="page" class="active"{% endif %}>Settings</a></li>
+      {% endif %}
     </ul>
     <div class="sidebar-foot">
       <a href="/docs">API docs</a>

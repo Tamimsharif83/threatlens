@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ class User:
     username: str
     role: Role
     disabled: bool
+    must_change_password: bool = False
 
     @property
     def is_admin(self) -> bool:
@@ -39,17 +41,50 @@ class User:
 
 
 def row_to_user(row: sqlite3.Row) -> User:
+    keys = row.keys()
     return User(
         id=row["id"],
         username=row["username"],
         role=Role(row["role"]),
         disabled=bool(row["disabled"]),
+        must_change_password=bool(row["must_change_password"])
+        if "must_change_password" in keys
+        else False,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class UserListing:
+    user: User
+    created_at: int
+    last_login_at: int | None
+
+
+def list_users(conn: sqlite3.Connection) -> list[UserListing]:
+    rows = conn.execute(
+        "SELECT id, username, role, disabled, must_change_password, created_at, last_login_at "
+        "FROM users ORDER BY username"
+    ).fetchall()
+    return [UserListing(row_to_user(r), r["created_at"], r["last_login_at"]) for r in rows]
+
+
+def count_active_admins(conn: sqlite3.Connection) -> int:
+    n: int = conn.execute(
+        "SELECT count(*) FROM users WHERE role = 'admin' AND disabled = 0"
+    ).fetchone()[0]
+    return n
+
+
+def set_disabled(conn: sqlite3.Connection, user_id: int, disabled: bool) -> None:
+    conn.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(disabled), user_id))
+    if disabled:
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
 
 def get_user(conn: sqlite3.Connection, user_id: int) -> User | None:
     row = conn.execute(
-        "SELECT id, username, role, disabled FROM users WHERE id = ?", (user_id,)
+        "SELECT id, username, role, disabled, must_change_password FROM users WHERE id = ?",
+        (user_id,),
     ).fetchone()
     return row_to_user(row) if row else None
 
@@ -59,29 +94,70 @@ def count_users(conn: sqlite3.Connection) -> int:
     return n
 
 
-def create_user(conn: sqlite3.Connection, username: str, password: str, role: Role) -> User:
+USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$")
+
+
+def validate_username(username: str) -> str:
+    if not USERNAME_RE.match(username):
+        raise ValueError("username must be 1-64 characters: letters, digits, '.', '_', '@' or '-'")
+    return username
+
+
+def create_user(
+    conn: sqlite3.Connection,
+    username: str,
+    password: str,
+    role: Role,
+    *,
+    must_change_password: bool = False,
+) -> User:
     cur = conn.execute(
-        "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-        (username, hash_password(password), role.value, now_ms()),
+        "INSERT INTO users (username, password_hash, role, created_at, must_change_password) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (username, hash_password(password), role.value, now_ms(), int(must_change_password)),
     )
     user_id = cur.lastrowid
     if user_id is None:  # pragma: no cover - sqlite always sets it after INSERT
         raise RuntimeError("user insert returned no row id")
-    return User(id=user_id, username=username, role=role, disabled=False)
-
-
-def set_password(conn: sqlite3.Connection, user_id: int, password: str) -> None:
-    conn.execute(
-        "UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id)
+    return User(
+        id=user_id,
+        username=username,
+        role=role,
+        disabled=False,
+        must_change_password=must_change_password,
     )
-    # Changing a password signs the user out everywhere.
-    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def set_password(
+    conn: sqlite3.Connection,
+    user_id: int,
+    password: str,
+    *,
+    must_change: bool = False,
+    keep_session_hash: str | None = None,
+) -> None:
+    """Set a password. Signs the user out everywhere (except, optionally, the session
+    that made the change)."""
+    conn.execute(
+        "UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?",
+        (hash_password(password), int(must_change), user_id),
+    )
+    conn.execute(
+        "DELETE FROM sessions WHERE user_id = ? AND token_hash IS NOT ?",
+        (user_id, keep_session_hash),
+    )
+
+
+def check_password(conn: sqlite3.Connection, user_id: int, password: str) -> bool:
+    row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+    return verify_password(row["password_hash"] if row else None, password)
 
 
 def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User | None:
     """Return the user if the credentials are valid and the account is enabled."""
     row = conn.execute(
-        "SELECT id, username, role, disabled, password_hash FROM users WHERE username = ?",
+        "SELECT id, username, role, disabled, must_change_password, password_hash FROM users "
+        "WHERE username = ?",
         (username,),
     ).fetchone()
     ok = verify_password(row["password_hash"] if row else None, password)
@@ -110,7 +186,8 @@ def bootstrap_admin(conn: sqlite3.Connection, settings: Settings) -> None:
         if settings.admin_password is None
         else (settings.admin_password.get_secret_value())
     )
-    create_user(conn, settings.admin_username, password, Role.ADMIN)
+    # A generated password must be replaced at first login.
+    create_user(conn, settings.admin_username, password, Role.ADMIN, must_change_password=generated)
     audit.record(
         conn,
         "user.bootstrap_admin",

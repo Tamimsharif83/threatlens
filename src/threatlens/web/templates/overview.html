@@ -3,41 +3,81 @@
 {% block content %}
 <div class="page-head">
   <h1>Overview</h1>
-  <p class="muted">Signed in as {{ user.username }}.</p>
+  <p class="muted">Charts and top lists cover up to the last 7 days of <em>event time</em>, counted back from the newest event, so imported old logs still show up.</p>
 </div>
 
 <section class="stat-grid" aria-label="Key figures">
   <div class="stat">
     <span class="stat-label">Events stored</span>
-    <span class="stat-value">0</span>
+    <span class="stat-value">{{ totals.events|num }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Sources</span>
+    <span class="stat-value">{{ totals.sources|num }}</span>
   </div>
   <div class="stat">
     <span class="stat-label">Open alerts</span>
     <span class="stat-value">0</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Rules enabled</span>
-    <span class="stat-value">0</span>
+    <span class="stat-note">Detection arrives in Phase 2</span>
   </div>
   <div class="stat">
     <span class="stat-label">Last ingest</span>
-    <span class="stat-value stat-value-sm">—</span>
+    <span class="stat-value stat-value-sm">{{ totals.last_ingest_at|dt }}</span>
   </div>
 </section>
 
 <section class="panel">
-  <h2>Getting started</h2>
-  <p>ThreatLens is running. Log ingestion, detection and the analyst workflow are added in the next phases:</p>
-  <ol class="roadmap">
-    <li><strong>Ingestion &amp; storage</strong> — web, ECS JSON, Linux auth and generic JSON logs.</li>
-    <li><strong>Detection</strong> — Sigma rules run on every ingested batch, plus retro-hunts.</li>
-    <li><strong>Triage</strong> — alert queue, pivots, search and a read-only SQL hunt console.</li>
-    <li><strong>Correlation</strong> — Sigma v2 correlation rules.</li>
-    <li><strong>Cases &amp; reports</strong> — timelines, IOCs and incident report export.</li>
-  </ol>
-  <dl class="kv">
-    <dt>Version</dt><dd>{{ app_version }}</dd>
-    <dt>Database schema</dt><dd>v{{ schema_version }}</dd>
-  </dl>
+  <div class="panel-head">
+    <h2>Events over time</h2>
+  </div>
+  <div id="events-chart" class="chart" data-src="/api/v1/stats/events-over-time?days=7" role="img" aria-label="Events over time by log source">
+    {% if not totals.events %}<p class="empty">No events yet. <a href="/ingest">Ingest some logs</a> to get started.</p>{% endif %}
+  </div>
 </section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Top source IPs</h2>
+    {% if top_ips %}
+    <table class="table compact">
+      <thead><tr><th scope="col">Source IP</th><th scope="col" class="num">Events</th></tr></thead>
+      <tbody>
+        {% for value, count in top_ips %}
+        <tr><td class="mono wrap">{{ value }}</td><td class="num">{{ count|num }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No source IPs yet.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Top users</h2>
+    {% if top_users %}
+    <table class="table compact">
+      <thead><tr><th scope="col">User</th><th scope="col" class="num">Events</th></tr></thead>
+      <tbody>
+        {% for value, count in top_users %}
+        <tr><td class="mono wrap">{{ value }}</td><td class="num">{{ count|num }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No user names yet.</p>{% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Ingest health</h2>
+    <a href="/ingest" class="btn btn-ghost btn-sm">All batches</a>
+  </div>
+  <p class="muted">Last 24 hours: {{ totals.failed_batches_24h|num }} failed batch(es), {{ totals.malformed_24h|num }} malformed line(s).</p>
+  {% include "_batch_table.html" %}
+</section>
+
+<p class="muted small">ThreatLens {{ app_version }} · database schema v{{ schema_version }}</p>
+{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="{{ static('vendor/uplot/uPlot.min.css') }}">
+<script src="{{ static('vendor/uplot/uPlot.iife.min.js') }}" defer></script>
+<script src="{{ static('js/overview.js') }}" defer></script>
 {% endblock %}

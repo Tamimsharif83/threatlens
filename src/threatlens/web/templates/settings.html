@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+{% block title %}Settings · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Settings</h1>
+</div>
+
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+{% if new_password %}
+<div class="alert alert-warn" role="alert">
+  <strong>One-time password for {{ new_password[0] }}:</strong>
+  <code class="secret">{{ new_password[1] }}</code>
+  <div class="small">Shown only now. Give it to the user over a secure channel; they must change it at first sign-in.</div>
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>General</h2>
+  <form method="post" action="/settings/general" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field">
+      <span>Retention (days)</span>
+      <input type="number" name="retention_days" min="1" max="3650" required value="{{ retention_days }}">
+      <small class="muted">Data ingested more than this many days ago is purged automatically (counted from ingestion, so imported old logs are kept for the full period). Default from TL_RETENTION_DAYS: {{ env_retention_days }}.</small>
+    </label>
+    <label class="field">
+      <span>Default timezone</span>
+      <input type="text" name="default_timezone" maxlength="64" required value="{{ default_timezone }}">
+      <small class="muted">For log timestamps without an offset (sources can override). Default: {{ env_timezone }}.</small>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
+  <dl class="kv">
+    <dt>Raw line storage</dt><dd>{{ "on (zstd)" if store_raw else "off" }} <span class="muted small">(TL_STORE_RAW)</span></dd>
+    <dt>Watch folder</dt><dd>{{ "on: /data/inbox" if watch_enabled else "off" }} <span class="muted small">(TL_WATCH_ENABLED)</span></dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Storage</h2>
+    <div class="btn-row">
+      <form method="post" action="/settings/maintenance/purge" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Run retention purge now</button>
+      </form>
+      <form method="post" action="/settings/maintenance/compact" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Compact database</button>
+      </form>
+    </div>
+  </div>
+  <dl class="kv">
+    <dt>Database file</dt><dd>{{ storage.db_bytes|bytes }}</dd>
+    <dt>Write-ahead log</dt><dd>{{ storage.wal_bytes|bytes }}</dd>
+    <dt>Free (reusable) space</dt><dd>{{ storage.free_bytes|bytes }}</dd>
+    <dt>Events</dt><dd>{{ storage.total_events|num }}</dd>
+  </dl>
+
+  <h3>Per source</h3>
+  {% if storage.sources %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">Source</th><th scope="col">Type</th><th scope="col" class="num">Events</th><th scope="col" class="num">≈ Size</th><th scope="col" class="num">Batches</th><th scope="col">Newest event</th><th scope="col">Timezone</th></tr></thead>
+    <tbody>
+      {% for s in storage.sources %}
+      <tr><td>{{ s.name }}</td><td>{{ s.parser }}</td><td class="num">{{ s.events|num }}</td><td class="num">{{ s.approx_bytes|bytes }}</td><td class="num">{{ s.batches|num }}</td><td class="nowrap">{{ s.last_event_at|dt }}</td><td>{{ s.timezone or "default" }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No sources yet.</p>{% endif %}
+
+  <h3>Per event table</h3>
+  {% if storage.tables %}
+  <table class="table compact">
+    <thead><tr><th scope="col">Table</th><th scope="col" class="num">Events</th><th scope="col" class="num">Size (incl. indexes)</th></tr></thead>
+    <tbody>
+      {% for t in storage.tables %}
+      <tr><td class="mono">{{ t.table }}</td><td class="num">{{ t.events|num }}</td><td class="num">{{ t.bytes|bytes }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">No event tables yet.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Users</h2>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col">Last sign-in</th><th scope="col">Actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.user.username }}{% if u.user.id == user.id %} <span class="muted small">(you)</span>{% endif %}</td>
+        <td>{{ u.user.role.value }}</td>
+        <td>
+          {% if u.user.disabled %}<span class="badge status-failed">disabled</span>
+          {% elif u.user.must_change_password %}<span class="badge status-queued">must change password</span>
+          {% else %}<span class="badge status-done">active</span>{% endif %}
+        </td>
+        <td class="nowrap">{{ u.created_at|dt }}</td>
+        <td class="nowrap">{{ u.last_login_at|dt }}</td>
+        <td class="btn-row">
+          {% if u.user.id != user.id %}
+            <form method="post" action="/settings/users/{{ u.user.id }}/{{ 'enable' if u.user.disabled else 'disable' }}" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-ghost btn-sm">{{ "Enable" if u.user.disabled else "Disable" }}</button>
+            </form>
+            <form method="post" action="/settings/users/{{ u.user.id }}/reset-password" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-ghost btn-sm">Reset password</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Add a user</h3>
+  <form method="post" action="/settings/users" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field">
+      <span>Username</span>
+      <input type="text" name="username" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._@-]{0,63}" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>Role</span>
+      <select name="role">
+        <option value="analyst" selected>analyst</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Create user</button></div>
+  </form>
+  <p class="muted small">A random one-time password is generated and shown once. The user must choose their own at first sign-in.</p>
+</section>
+{% endblock %}
