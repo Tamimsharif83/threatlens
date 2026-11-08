@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}Overview · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Overview</h1>
+  <p class="muted">Signed in as {{ user.username }}.</p>
+</div>
+
+<section class="stat-grid" aria-label="Key figures">
+  <div class="stat">
+    <span class="stat-label">Events stored</span>
+    <span class="stat-value">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Open alerts</span>
+    <span class="stat-value">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Rules enabled</span>
+    <span class="stat-value">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Last ingest</span>
+    <span class="stat-value stat-value-sm">—</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Getting started</h2>
+  <p>ThreatLens is running. Log ingestion, detection and the analyst workflow are added in the next phases:</p>
+  <ol class="roadmap">
+    <li><strong>Ingestion &amp; storage</strong> — web, ECS JSON, Linux auth and generic JSON logs.</li>
+    <li><strong>Detection</strong> — Sigma rules run on every ingested batch, plus retro-hunts.</li>
+    <li><strong>Triage</strong> — alert queue, pivots, search and a read-only SQL hunt console.</li>
+    <li><strong>Correlation</strong> — Sigma v2 correlation rules.</li>
+    <li><strong>Cases &amp; reports</strong> — timelines, IOCs and incident report export.</li>
+  </ol>
+  <dl class="kv">
+    <dt>Version</dt><dd>{{ app_version }}</dd>
+    <dt>Database schema</dt><dd>v{{ schema_version }}</dd>
+  </dl>
+</section>
+{% endblock %}

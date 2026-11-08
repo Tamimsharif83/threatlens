@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ status_code }} · ThreatLens{% endblock %}
+{% block body %}
+<main id="main" class="login-wrap">
+  <div class="login-card">
+    <h1 class="error-code">{{ status_code }}</h1>
+    <p>{{ detail }}</p>
+    <p><a href="/">Back to ThreatLens</a></p>
+  </div>
+</main>
+{% endblock %}

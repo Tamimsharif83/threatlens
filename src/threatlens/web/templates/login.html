@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Sign in · ThreatLens{% endblock %}
+{% block body %}
+<main id="main" class="login-wrap">
+  <div class="login-card">
+    <div class="login-brand">
+      <img src="{{ static('img/favicon.svg') }}" alt="" width="40" height="40">
+      <h1>ThreatLens</h1>
+      <p class="muted">Detection &amp; investigation</p>
+    </div>
+    {% if error %}
+      <div class="alert alert-error" role="alert">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="stack" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label class="field">
+        <span>Username</span>
+        <input type="text" name="username" required maxlength="64" autocomplete="username" autofocus>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" required maxlength="1024" autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+  </div>
+</main>
+{% endblock %}

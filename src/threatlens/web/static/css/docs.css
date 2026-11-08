@@ -1,0 +1,4 @@
+body { margin: 0; background: #fafafa; }
+.docs-bar { padding: 10px 16px; background: #0f1720; font: 14px system-ui, sans-serif; }
+.docs-bar a { color: #7dd3fc; text-decoration: none; }
+.docs-bar a:hover { text-decoration: underline; }
