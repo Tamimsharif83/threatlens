@@ -29,7 +29,11 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(data_dir=tmp_path / "data", admin_password=ADMIN_PASSWORD)  # type: ignore[arg-type]
+    return Settings(  # type: ignore[call-arg]
+        data_dir=tmp_path / "data",
+        admin_password=ADMIN_PASSWORD,  # type: ignore[arg-type]
+        watch_enabled=False,  # tests drive the watcher explicitly
+    )
 
 
 @pytest.fixture

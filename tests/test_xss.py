@@ -58,8 +58,9 @@ def test_no_unsafe_template_constructs() -> None:
         r"\|\s*safe\b",
         r"autoescape\s+false",
         r"\bMarkup\(",
-        r"\binnerHTML\b",
-        r"\bouterHTML\b",
+        # DOM property writes (HTMX's hx-swap="innerHTML" swaps escaped server HTML: fine)
+        r"\.innerHTML\b",
+        r"\.outerHTML\b",
         r"insertAdjacentHTML",
         r"document\.write",
         r"hx-on",
