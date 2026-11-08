@@ -84,6 +84,22 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 303
           docker exec tl id -u | grep -qx 10001
 
+      - name: Ports are published on 127.0.0.1 only
+        run: |
+          # The running container (documented docker run command):
+          docker port tl
+          test -z "$(docker port tl | grep -v '127.0.0.1:')"
+          # The Compose file as Docker renders it, with a custom host port:
+          TL_HOST_PORT=18090 docker compose config --format json | python3 -c '
+          import json, sys
+          ports = [p for s in json.load(sys.stdin)["services"].values() for p in s.get("ports", [])]
+          assert ports, "no ports rendered"
+          for p in ports:
+              assert p.get("host_ip") == "127.0.0.1", f"not localhost-only: {p}"
+              assert str(p.get("published")) == "18090", f"TL_HOST_PORT ignored: {p}"
+          print("compose ports OK:", ports)
+          '
+
       - name: Image size
         run: |
           docker image ls threatlens:ci
