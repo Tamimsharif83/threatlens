@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an improvement to ThreatLens.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the analyst workflow or limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is not a request for a specific detection rule (those belong upstream in SigmaHQ).
+          required: true

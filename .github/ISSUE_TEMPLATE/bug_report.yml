@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in ThreatLens doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security vulnerability?** Do not file it here — see SECURITY.md.
+        **Never paste real logs** that contain personal data, credentials or internal hostnames. Use a minimal, sanitized sample.
+  - type: input
+    id: version
+    attributes:
+      label: ThreatLens version / image tag
+      placeholder: "0.1.0 or ghcr.io/tamimsharif83/threatlens:0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. docker run ...
+        2. Upload a file with this (sanitized) line: ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: ThreatLens container log (sanitized)
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Host OS / Docker version / CPU arch
+      placeholder: "Ubuntu 24.04, Docker 28.5, amd64"
