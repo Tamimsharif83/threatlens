@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     max_upload_mb: Annotated[int, Field(ge=1, le=10_240)] = 1024
     store_raw: bool = Field(default=False, description="Keep the raw log line (zstd-compressed).")
     delete_uploads: bool = Field(default=True, description="Delete uploaded files after ingest.")
+    # Cap on data expanded from one .gz/.zip (zip-bomb protection).
+    max_decompressed_mb: Annotated[int, Field(ge=1, le=102_400)] = 10_240
+    watch_enabled: bool = Field(default=True, description="Ingest files placed in <data>/inbox.")
+    watch_interval_seconds: Annotated[float, Field(ge=0.5, le=3600)] = 5.0
     alert_throttle_minutes: Annotated[int, Field(ge=0, le=10_080)] = 60
     default_timezone: str = "UTC"
     log_level: LogLevel = LogLevel.INFO
@@ -106,5 +110,5 @@ class Settings(BaseSettings):
 
     def ensure_dirs(self) -> None:
         """Create the data directory layout (owner-only permissions)."""
-        for path in (self.data_dir, self.tmp_dir):
+        for path in (self.data_dir, self.tmp_dir, self.data_dir / "uploads"):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
