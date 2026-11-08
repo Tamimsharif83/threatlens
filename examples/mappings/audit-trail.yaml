@@ -1,0 +1,19 @@
+# Example field mapping for an application audit trail (who did what).
+name: audit-trail
+logsource:
+  product: app
+  service: audit
+timestamp:
+  field: time
+  format: "%Y-%m-%d %H:%M:%S"    # no offset in the data...
+  timezone: UTC                  # ...so state it
+fields:
+  actor: user.name
+  actor_ip: source.ip
+  action: event.action
+  result: event.outcome
+  target: user.target.name
+  object.file: file.name
+keep_unmapped: false
+constants:
+  event.category: iam

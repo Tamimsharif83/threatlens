@@ -12,8 +12,8 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.1.0, Phase 0 of 8).** The platform skeleton,
-> authentication and container are in place. Ingestion arrives next — see the
+> **Status: early development (v0.2.0, Phase 1 of 8).** Log ingestion, storage,
+> users and the overview dashboard work. Sigma detection arrives next — see the
 > [roadmap](#roadmap).
 
 ![ThreatLens overview page](docs/images/overview.png)
@@ -27,7 +27,25 @@ docker run -d --name threatlens -p 127.0.0.1:8080:8080 \
 docker logs threatlens   # shows the generated admin password (once)
 ```
 
-Open <http://127.0.0.1:8080> and sign in as `admin`.
+Open <http://127.0.0.1:8080> and sign in as `admin` (you will be asked to choose
+your own password).
+
+**Try it with sample data** (synthetic, generated from a fixed seed):
+
+```bash
+docker exec threatlens sh -c 'threatlens synth --kind web --lines 20000 -o /data/tmp/access.log &&
+  threatlens synth --kind auth --lines 3000 -o /data/tmp/auth.log &&
+  threatlens synth --kind ecs --lines 3000 -o /data/tmp/app.jsonl &&
+  threatlens ingest /data/tmp/access.log /data/tmp/auth.log /data/tmp/app.jsonl'
+```
+
+**Your own logs:** upload them on the *Ingest* page, or mount a folder as the
+watch folder (read-only is fine) and new lines are picked up within seconds:
+
+```bash
+docker run -d --name threatlens -p 127.0.0.1:8080:8080 -v threatlens-data:/data \
+  -v /var/log/nginx:/data/inbox/web-prod:ro ghcr.io/tamimsharif83/threatlens:latest
+```
 
 The port is bound to `127.0.0.1` on purpose: ThreatLens is only reachable from
 your own machine. To expose it, put a TLS reverse proxy in front (see
@@ -54,6 +72,9 @@ docker compose logs threatlens | grep -A3 "first run"
 
 Lost the admin password? `docker exec -it threatlens threatlens user reset-password admin`
 
+Useful CLI commands (inside the container: `docker exec threatlens threatlens …`):
+`ingest`, `db stats`, `db purge`, `db compact [--full]`, `synth`, `user reset-password`.
+
 ### Changing the port
 
 ThreatLens listens on port 8080 inside the container. If 8080 is already in use
@@ -79,7 +100,8 @@ Compose file or the documented commands stop binding to localhost.
 | Area | What you get | Status |
 |---|---|---|
 | Platform | One container, offline, < 100 MB idle RAM, login with argon2id, roles, audit log | ✅ Phase 0 |
-| Ingestion | Apache/Nginx, ECS JSON Lines, Linux auth, generic JSON + field mapping, `.gz`/`.zip`; upload, CLI, watch folder | Phase 1 |
+| Ingestion | Apache/Nginx (combined, common, custom formats), ECS JSON Lines, Linux auth, generic JSON + field mapping, `.gz`/`.zip`; drag & drop upload, CLI, watch folder with rotation handling; dedup; retention; ingest reports | ✅ Phase 1 |
+| Users | Admin creates analysts in Settings (one-time password, forced change); no passwords in env vars except the first admin | ✅ Phase 1 |
 | Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint | Phase 2 |
 | Triage | Alert queue, "why it fired", entity pivots, search, read-only SQL hunt console, suppressions | Phase 3 |
 | Correlation | Sigma v2 `event_count`, `value_count`, `temporal`, `temporal_ordered` | Phase 4 |
@@ -113,10 +135,18 @@ More detail: [docs/architecture.md](docs/architecture.md) and the
 
 ## Supported log formats
 
-Planned for v1 (Phase 1 and Phase 7): Apache/Nginx combined and common, ECS JSON
-Lines, Linux `auth.log`/`secure`, Windows EVTX (Security, Sysmon,
-PowerShell/Operational, System), and generic JSON Lines with a field-mapping YAML.
-Details will be in `docs/log-formats.md`.
+| Type | Examples | Details |
+|---|---|---|
+| Web access logs | Apache/Nginx combined, common, vhost, or your own `LogFormat` / `log_format` | [log-formats.md](docs/log-formats.md#web-server-access-logs-apache-nginx) |
+| ECS JSON Lines | application events with Elastic Common Schema names | [log-formats.md](docs/log-formats.md#ecs-json-lines-ecs-json) |
+| Linux auth | `auth.log`, `secure`: sshd, sudo, su, PAM, useradd/usermod, cron | [log-formats.md](docs/log-formats.md#linux-auth-linux-auth) |
+| Any JSON Lines | with an optional [field mapping](examples/mappings/) | [log-formats.md](docs/log-formats.md#generic-json-lines-json-and-field-mappings) |
+| Windows EVTX | Security, Sysmon, PowerShell, System | Phase 7 |
+
+Plain files, `.gz` and `.zip`. The format is auto-detected or chosen explicitly.
+How events are stored: [docs/schema.md](docs/schema.md).
+
+![Ingest page](docs/images/ingest.png)
 
 ## Writing rules
 
@@ -138,12 +168,15 @@ All settings are environment variables with the `TL_` prefix.
 | `TL_DATA_DIR` | `/data` in the image | Where all state is kept |
 | `TL_ADMIN_USERNAME` | `admin` | First-run admin username |
 | `TL_ADMIN_PASSWORD` | *(unset)* | First-run admin password (≥ 12 chars). Unset: a random one is printed once to the log. Only used when no users exist. |
-| `TL_RETENTION_DAYS` | `30` | Events older than this are purged (Phase 1) |
-| `TL_MAX_UPLOAD_MB` | `1024` | Maximum upload size (Phase 1) |
-| `TL_STORE_RAW` | `false` | Also keep the raw log line, zstd-compressed (Phase 1) |
-| `TL_DELETE_UPLOADS` | `true` | Delete uploaded files after a successful ingest (Phase 1) |
+| `TL_RETENTION_DAYS` | `30` | Data ingested more than this many days ago is purged (changeable in Settings) |
+| `TL_MAX_UPLOAD_MB` | `1024` | Maximum size of one upload request |
+| `TL_MAX_DECOMPRESSED_MB` | `10240` | Maximum data expanded from one `.gz`/`.zip` (bomb protection) |
+| `TL_STORE_RAW` | `false` | Also keep each raw log line, zstd-compressed with a per-batch dictionary |
+| `TL_DELETE_UPLOADS` | `true` | Delete uploaded files after ingest (`false` keeps them in `/data/uploads/kept`) |
+| `TL_WATCH_ENABLED` | `true` | Ingest files placed in `/data/inbox` |
+| `TL_WATCH_INTERVAL_SECONDS` | `5` | How often the watch folder is checked |
 | `TL_ALERT_THROTTLE_MINUTES` | `60` | Same rule + same entity within this window = one alert (Phase 2) |
-| `TL_DEFAULT_TIMEZONE` | `UTC` | Timezone for logs whose timestamps have none (Phase 1) |
+| `TL_DEFAULT_TIMEZONE` | `UTC` | Timezone for log timestamps without one (changeable in Settings) |
 | `TL_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `TL_SESSION_HOURS` | `12` | Session lifetime |
 | `TL_COOKIE_SECURE` | `auto` | `auto` (Secure when the request is HTTPS), `always`, `never` |
@@ -172,8 +205,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Plan & scaffold: ADRs, CI, Docker, login, empty dashboard | ✅ done |
-| 1 | Ingestion & storage | next |
-| 2 | Detection (Sigma) | |
+| 1 | Ingestion & storage | ✅ done |
+| 2 | Detection (Sigma) | next |
 | 3 | Triage | |
 | 4 | Correlation | |
 | 5 | Cases & reports | |

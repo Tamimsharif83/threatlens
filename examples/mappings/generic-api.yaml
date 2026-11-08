@@ -1,0 +1,23 @@
+# Example field mapping for a JSON Lines API log.
+# Copy to /data/mappings/ (or pass with --mapping) and adapt the source keys.
+name: generic-api
+logsource:
+  product: api
+  category: webserver          # lets webserver-style Sigma rules target it too
+timestamp:
+  field: ts
+  format: epoch_ms
+fields:
+  client.ip: source.ip
+  client.port: source.port
+  request.method: http.request.method
+  request.path: url.path
+  request.query: url.query
+  request.user_agent: user_agent.original
+  response.status: http.response.status_code
+  response.bytes: http.response.body.bytes
+  auth.user: user.name
+  latency_ms: api.latency_ms
+keep_unmapped: true
+constants:
+  event.category: web

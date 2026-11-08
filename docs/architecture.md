@@ -36,9 +36,12 @@ flowchart TB
 | `audit` | append-only audit log of analyst and system actions | 0 |
 | `web` | FastAPI app, security headers, CSRF, templates, static assets | 0 |
 | `cli` | `threatlens` command (serve, healthcheck, user, later ingest/rules/db) | 0 |
-| `ingest` | upload, CLI and watch-folder sources; batching; dedup | 1 |
-| `parsers` | one parser per input format, streaming | 1 |
-| `normalize` | map parsed records to the ECS-based schema | 1 |
+| `ingest` | safe readers (archives, limits), streaming pipeline, upload worker, watch folder | 1 |
+| `parsers` | web access, Linux auth, ECS JSON, generic JSON + mappings; format detection | 1 |
+| `normalize` | event model, Sigma log sources → tables, value conversion | 1 |
+| `storage` (events, maintenance) | per-log-source event tables, field catalog, retention, stats | 1 |
+| `services` | background threads: ingest worker, inbox watcher, maintenance | 1 |
+| `stats` | overview aggregates | 1 |
 | `detection` | load/validate Sigma rules, compile with pySigma, run per batch and retro-hunt | 2 |
 | `alerts` | grouping, throttling, triage state | 2–3 |
 | `correlation` | Sigma v2 correlation rules, parent/child alert links | 4 |
@@ -58,13 +61,17 @@ flowchart TB
 
 ## Data layout
 
-See [ADR-0002](adr/0002-storage-engine-and-event-layout.md). Phase 0 creates:
+See [ADR-0002](adr/0002-storage-engine-and-event-layout.md),
+[ADR-0004](adr/0004-ingestion-pipeline.md) and [schema.md](schema.md).
 
 | Table | Purpose |
 |---|---|
-| `users` | accounts, argon2id hashes, role, disabled flag |
+| `users` | accounts, argon2id hashes, role, disabled flag, must-change-password |
 | `sessions` | SHA-256 of session tokens, CSRF token, expiry |
 | `audit_log` | who did what, when, from where |
+| `app_settings` | settings changed in the UI (retention, default timezone) |
+| `sources`, `ingest_batches`, `ingest_batch_tables`, `raw_dicts`, `watch_files` | ingestion bookkeeping |
+| `event_tables`, `event_fields`, `ev_*` | events and their catalog (see [schema.md](schema.md)) |
 
 Schema changes are numbered SQL files in `src/threatlens/storage/migrations/`,
 applied in order at startup and tracked with `PRAGMA user_version`.
