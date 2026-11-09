@@ -6,10 +6,14 @@ Layout (one folder per rule id)::
     tests/rules/<rule-id>/tn.log     raw log lines that must NOT match
     tests/rules/<rule-id>/tp.jsonl   ...or events as JSON objects with ECS field names
     tests/rules/<rule-id>/tn.jsonl
+    tests/rules/<rule-id>/tp.evtx    Windows: an EVTX file (every record must match)
+    tests/rules/<rule-id>/tn.evtx
 
 Raw lines go through the same parsers as real ingestion (format auto-detected),
 so a test also proves the parser extracts what the rule needs. JSON events are
-inserted as they are; ``@timestamp`` is optional.
+inserted as they are; ``@timestamp`` is optional. A JSON line holding a Windows
+record (``{"Event": {"System": ..., "EventData": ...}}``, as ``evtx_dump -o jsonl``
+writes it) is parsed like an EVTX record and lands in its channel's table.
 
 Each rule is tested in a throwaway database, so tests never touch real data.
 """
@@ -25,13 +29,20 @@ from pathlib import Path
 
 from threatlens.correlation.compiler import BaseRule, CompiledCorrelation, compile_correlation
 from threatlens.correlation.runner import create_views, ensure_columns
-from threatlens.detection.compiler import CompileError, compile_detection, tables_for
+from threatlens.detection.compiler import (
+    CompileError,
+    NotApplicableError,
+    compile_detection,
+    tables_for,
+)
 from threatlens.detection.engine import BUILTIN_TABLES, register_functions, table_catalog
 from threatlens.detection.loader import LoadedRule
+from threatlens.ingest.readers import MALFORMED, EvtxLines, iter_lines
 from threatlens.normalize.schema import Event, LogSource
 from threatlens.normalize.values import flatten
 from threatlens.parsers import ParseContext, ParseError, UnknownFormatError, detect_parser
 from threatlens.parsers.json_lines import parse_timestamp
+from threatlens.parsers.windows import WindowsEventParser
 from threatlens.storage.db import connect, init_db, transaction
 from threatlens.storage.events import ID, EventStore, PreparedEvent, content_hash, quote_ident
 
@@ -67,6 +78,14 @@ def _events_from_jsonl(path: Path, table_ls: LogSource) -> list[Event]:
             raise ValueError(f"{path.name}:{n}: invalid JSON: {exc}") from exc
         if not isinstance(obj, dict):
             raise ValueError(f"{path.name}:{n}: expected a JSON object")
+        if isinstance(obj.get("Event"), dict):  # a Windows record (evtx_dump JSON)
+            try:
+                ev = WindowsEventParser().parse(line, ParseContext())
+            except ParseError as exc:
+                raise ValueError(f"{path.name}:{n}: {exc}") from exc
+            ev.record_no = n
+            events.append(ev)
+            continue
         fields = flatten(obj)
         raw_ts = fields.pop("@timestamp", None)
         ts = parse_timestamp(raw_ts, "auto", UTC) if raw_ts is not None else FIXTURE_TS + n
@@ -94,15 +113,33 @@ def _events_from_log(path: Path) -> list[Event]:
     return events
 
 
+def _events_from_evtx(path: Path) -> list[Event]:
+    parser = WindowsEventParser()
+    events = []
+    lines = EvtxLines(path, path.name)
+    for n, line in iter_lines(lines):
+        if line.startswith(MALFORMED):
+            raise ValueError(f"{path.name}: record {n}: {line[len(MALFORMED) :]}")
+        try:
+            ev = parser.parse(line, ParseContext())
+        except ParseError as exc:
+            raise ValueError(f"{path.name}: record {n}: {exc}") from exc
+        ev.record_no = n
+        events.append(ev)
+    return events
+
+
 def _load_fixture(directory: Path, kind: str, table_ls: LogSource) -> list[Event] | None:
-    jsonl, log = directory / f"{kind}.jsonl", directory / f"{kind}.log"
-    if not jsonl.exists() and not log.exists():
+    jsonl, log, evtx = (directory / f"{kind}.{ext}" for ext in ("jsonl", "log", "evtx"))
+    if not jsonl.exists() and not log.exists() and not evtx.exists():
         return None
     events: list[Event] = []
     if jsonl.exists():
         events += _events_from_jsonl(jsonl, table_ls)
     if log.exists():
         events += _events_from_log(log)
+    if evtx.exists():
+        events += _events_from_evtx(evtx)
     return events
 
 
@@ -147,7 +184,10 @@ def _evaluate(
             for table in rule_tables:
                 if table not in present:
                     continue
-                compiled = compile_detection(rule.yaml, table, filters)
+                try:
+                    compiled = compile_detection(rule.yaml, table, filters)
+                except NotApplicableError:
+                    continue  # e.g. a Sysmon-only field: the rule runs on other tables
                 existing = store.table_columns(table)
                 with transaction(conn):
                     for f in compiled.fields:
@@ -180,7 +220,9 @@ def run_rule_test(
         return result
     directory = find_fixture_dir(rule.id, test_dirs)
     if directory is None:
-        result.messages.append("no fixtures (tests/rules/<rule-id>/tp.log, tn.log, *.jsonl)")
+        result.messages.append(
+            "no fixtures (tests/rules/<rule-id>/tp.log, tn.log, *.jsonl, *.evtx)"
+        )
         return result
     _, table_ls = _target_logsource(rule)
     try:
@@ -262,7 +304,9 @@ def run_correlation_test(
         return result
     directory = find_fixture_dir(rule.id, test_dirs)
     if directory is None:
-        result.messages.append("no fixtures (tests/rules/<rule-id>/tp.log, tn.log, *.jsonl)")
+        result.messages.append(
+            "no fixtures (tests/rules/<rule-id>/tp.log, tn.log, *.jsonl, *.evtx)"
+        )
         return result
     if not bases:
         result.status = "fail"

@@ -35,6 +35,7 @@ from threatlens.correlation.compiler import (
 )
 from threatlens.correlation.runner import run_correlation
 from threatlens.detection.compiler import (
+    NOT_APPLICABLE,
     CompiledRule,
     CompileError,
     compile_detection,
@@ -47,7 +48,14 @@ from threatlens.detection.loader import (
     builtin_tests_dir,
     load_rules,
 )
-from threatlens.normalize.schema import ECS, GENERIC_JSON, LINUX_AUTH, WEBSERVER, LogSource
+from threatlens.normalize.schema import (
+    ECS,
+    GENERIC_JSON,
+    LINUX_AUTH,
+    WEBSERVER,
+    WINDOWS_SOURCES,
+    LogSource,
+)
 from threatlens.storage.db import transaction
 from threatlens.storage.events import ID, EventStore, quote_ident
 from threatlens.timeutil import now_ms
@@ -55,7 +63,7 @@ from threatlens.timeutil import now_ms
 log = logging.getLogger(__name__)
 RETRO_CHUNK = 100_000
 BUILTIN_TABLES: tuple[tuple[str, LogSource], ...] = tuple(
-    (ls.table_name, ls) for ls in (WEBSERVER, LINUX_AUTH, ECS, GENERIC_JSON)
+    (ls.table_name, ls) for ls in (WEBSERVER, LINUX_AUTH, ECS, GENERIC_JSON, *WINDOWS_SOURCES)
 )
 
 
@@ -261,11 +269,17 @@ class DetectionEngine:
         for rule_id, yaml_text, logsource in rows:
             tables = tables_for(json.loads(logsource), catalog)
             error = None
+            not_applicable: list[str] = []
             for table in tables:
                 compiled = self._compile(rule_id, yaml_text, table)
                 if isinstance(compiled, str):
+                    if compiled.startswith(NOT_APPLICABLE):
+                        not_applicable.append(compiled)
+                        continue
                     error = f"cannot compile for {table}: {compiled}"
                     break
+            if error is None and tables and len(not_applicable) == len(tables):
+                error = f"cannot compile for any table: {not_applicable[0]}"
             updates.append((error, rule_id))
         with transaction(conn):
             conn.executemany("UPDATE rules SET load_error = ? WHERE id = ?", updates)
@@ -425,7 +439,8 @@ class DetectionEngine:
                 continue
             compiled = self._compile(rule["id"], rule["yaml"], table)
             if isinstance(compiled, str):
-                report.errors[rule["id"]] = compiled
+                if not compiled.startswith(NOT_APPLICABLE):
+                    report.errors[rule["id"]] = compiled
                 continue
             self._ensure_columns(conn, compiled)
             for lo, hi in ranges[table]:  # one range at a time keeps memory bounded

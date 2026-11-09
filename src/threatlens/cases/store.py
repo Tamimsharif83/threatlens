@@ -42,6 +42,8 @@ IOC_FIELDS: dict[str, str] = {
     "file.hash.sha1": "file_hash",
     "file.hash.md5": "file_hash",
     "file.name": "file_name",
+    "process.name": "file_name",
+    "dns.question.name": "domain",
 }
 _HEX_HASH = re.compile(r"^[0-9a-fA-F]{32}([0-9a-fA-F]{8})?([0-9a-fA-F]{24})?$")
 
@@ -456,6 +458,7 @@ def _event_summary(ev: EventView) -> str:
     patterns = (
         ("url.original",),  # web logs: the whole request line ("GET /x HTTP/1.1")
         ("http.request.method", "url.path"),
+        ("event.action", "process.command_line"),  # Windows process creation
         ("event.action", "user.name"),
         ("event.action", "file.name"),
         ("message",),

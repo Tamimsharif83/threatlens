@@ -20,6 +20,7 @@ import yaml
 from sigma.backends.sqlite.sqlite import sqliteBackend
 from sigma.collection import SigmaCollection
 from sigma.correlations import SigmaCorrelationRule
+from sigma.exceptions import SigmaTransformationError
 from sigma.processing.conditions import (
     IsSigmaCorrelationRuleCondition,
     RuleAttributeCondition,
@@ -39,6 +40,7 @@ from threatlens.detection.compiler import (
     WEBSERVER_FIELDS,
     CompileError,
     parse_filter,
+    windows_pipeline,
 )
 from threatlens.storage.events import ID, TS
 
@@ -137,6 +139,23 @@ def _entity_fields(corr: SigmaCorrelationRule, bases: Sequence[BaseRule]) -> dic
     return out
 
 
+def _apply_windows_pipelines(collection: SigmaCollection, bases: Sequence[BaseRule]) -> None:
+    """Windows rules: the official pySigma pipelines (EventID/Channel conditions, field
+    mapping) are applied to each referenced rule for its own table first."""
+    by_id = {b.id: b for b in bases}
+    for rule in collection.rules:
+        base = by_id.get(str(rule.id)) if isinstance(rule, SigmaRule) else None
+        if base is None:
+            continue
+        official = windows_pipeline(base.logsource, base.table)
+        if official is None:
+            continue
+        try:
+            official.apply(rule)
+        except SigmaTransformationError as exc:
+            raise CompileError(f"rule {base.id} on {base.table}: {exc}") from exc
+
+
 def compile_correlation(
     corr_yaml: str, bases: Sequence[BaseRule], filters: Sequence[str] = ()
 ) -> CompiledCorrelation:
@@ -159,6 +178,7 @@ def compile_correlation(
         for rule in collection.rules:
             if isinstance(rule, SigmaRule):
                 flt.apply_on_rule(rule)
+    _apply_windows_pipelines(collection, bases)
     fulltext = {FULLTEXT_FIELD.get(b.table, DEFAULT_FULLTEXT_FIELD) for b in bases}
     backend = sqliteBackend(
         _pipeline(bases),

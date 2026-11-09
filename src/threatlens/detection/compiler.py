@@ -9,6 +9,14 @@ map onto stored field names:
   source has ``category: webserver``.
 * ``product: ecs`` rules run on ``ev_ecs``; the rule's ``category`` becomes an
   extra ``event.category = <category>`` condition.
+* ``product: windows`` rules use pySigma's official Windows pipelines. A rule
+  with a ``service`` runs on that channel's table (``ev_windows_security`` ...).
+  A rule with a generic ``category`` runs on every table that can produce it:
+  ``process_creation`` on Sysmon (EventID 1, `sysmon_pipeline`) and on Security
+  (EventID 4688 with field mapping, `windows_audit_pipeline`); ``ps_script`` on
+  PowerShell/Operational (EventID 4104) and so on. When a pipeline rejects a rule
+  for one table (a Sysmon field with no Security counterpart), the rule still
+  runs on the other tables (`NotApplicableError`).
 * Every other rule runs on the tables whose declared log source matches
   (see `tables_for`).
 
@@ -19,14 +27,26 @@ rule is always parsed fresh from its YAML before each compilation.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 
 from sigma.backends.sqlite.sqlite import sqliteBackend
 from sigma.collection import SigmaCollection
 from sigma.correlations import SigmaCorrelationRule
+from sigma.exceptions import SigmaTransformationError
 from sigma.filters import SigmaFilter
+from sigma.pipelines.common import windows_logsource_mapping
+from sigma.pipelines.sysmon.sysmon import (
+    sysmon_generic_logsource_eventid_mapping,
+    sysmon_pipeline,
+)
+from sigma.pipelines.windows.windows import (
+    generic_logsource_to_windows_audit_event_mapping,
+    windows_audit_pipeline,
+    windows_generic_category_channel_mapping,
+    windows_logsource_pipeline,
+)
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
 from sigma.processing.transformations import (
     AddConditionTransformation,
@@ -64,10 +84,54 @@ FULLTEXT_FIELD = {"ev_webserver": "url.original"}
 DEFAULT_FULLTEXT_FIELD = "message"
 
 ECS_TABLE = "ev_ecs"
+WINDOWS = "windows"
+NOT_APPLICABLE = "not applicable to this table: "
 
 
 class CompileError(ValueError):
     """The rule cannot be turned into SQL."""
+
+
+class NotApplicableError(CompileError):
+    """A pipeline rejects the rule for this table only (it may run on others)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(NOT_APPLICABLE + reason)
+
+
+def windows_table(service: str | None) -> str:
+    return LogSource(product=WINDOWS, service=service).table_name
+
+
+# Event table -> Sigma service, for every channel the official pipeline knows.
+WINDOWS_TABLE_SERVICES: dict[str, str] = {windows_table(s): s for s in windows_logsource_mapping}
+
+
+def windows_category_services(category: str) -> list[str]:
+    """Services (channels) whose events a generic Windows ``category`` can come from."""
+    services = []
+    if category in sysmon_generic_logsource_eventid_mapping:
+        services.append("sysmon")
+    audit: Mapping[str, object] = generic_logsource_to_windows_audit_event_mapping  # type: ignore[assignment]
+    if category in audit:
+        services.append("security")
+    if category in windows_generic_category_channel_mapping:
+        services.append(str(windows_generic_category_channel_mapping[category]["service"]))
+    return services
+
+
+def windows_pipeline(logsource: Mapping[str, str], table: str) -> ProcessingPipeline | None:
+    """The official pySigma pipelines for a Windows rule on ``table`` (None otherwise)."""
+    if logsource.get("product") != WINDOWS:
+        return None
+    service = WINDOWS_TABLE_SERVICES.get(table)
+    pipeline = windows_logsource_pipeline()  # Channel condition per service
+    if logsource.get("category") and not logsource.get("service"):
+        if service == "sysmon":
+            pipeline = sysmon_pipeline() + pipeline
+        elif service == "security":
+            pipeline = windows_audit_pipeline() + pipeline
+    return pipeline
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +172,9 @@ def tables_for(logsource: dict[str, str], catalog: Iterable[tuple[str, LogSource
     service = logsource.get("service")
     if product == "ecs":
         return [ECS_TABLE]
+    if product == WINDOWS and (service or category):
+        services = [service] if service else windows_category_services(str(category))
+        return sorted({t for t, ls in catalog if ls.product == WINDOWS and ls.service in services})
     found: list[str] = []
     for table, ls in catalog:
         if ls.product == "ecs":
@@ -138,7 +205,9 @@ def _pipeline(logsource: dict[str, str], table: str) -> ProcessingPipeline:
             ProcessingItem(AddConditionTransformation({"event.category": logsource["category"]}))
         )
     items.append(ProcessingItem(SetStateTransformation("table", table)))
-    return ProcessingPipeline(name="threatlens", priority=20, items=items)
+    own = ProcessingPipeline(name="threatlens", priority=20, items=items)
+    official = windows_pipeline(logsource, table)
+    return official + own if official is not None else own
 
 
 def backend_for(logsource: dict[str, str], table: str) -> sqliteBackend:
@@ -179,6 +248,8 @@ def compile_detection(yaml_text: str, table: str, filters: Sequence[str] = ()) -
     backend = backend_for(logsource, table)
     try:
         queries = backend.convert_rule(rule)
+    except SigmaTransformationError as exc:  # e.g. a Sysmon-only field on Security events
+        raise NotApplicableError(str(exc)) from exc
     except Exception as exc:  # pySigma raises many exception types for unsupported features
         raise CompileError(f"cannot convert rule: {exc}") from exc
     if len(queries) != 1 or not isinstance(queries[0], str):
