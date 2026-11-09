@@ -43,7 +43,11 @@ jobs:
       - name: Tests
         run: uv run pytest --cov-report=xml
 
-      # Phase 2 adds: uv run threatlens rules lint && uv run threatlens rules test
+      - name: Sigma rules lint
+        run: uv run threatlens rules lint --dir rules/examples
+
+      - name: Sigma rule tests (true/false positive fixtures)
+        run: uv run threatlens rules test --dir rules/examples --tests tests/rules --require-fixtures
 
   docker:
     name: Docker build, smoke test & Trivy
