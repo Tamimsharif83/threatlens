@@ -30,6 +30,7 @@ ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06")
 EVTX_MAGIC = b"ElfFile\x00"
 BINARY_MAGICS = (b"MZ", b"\x7fELF", b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe", b"%PDF")
 SNIFF_BYTES = 8192
+MAX_TEXT_NULS = 16  # NUL bytes tolerated in a text sample (see check_text)
 MAX_LINE_BYTES = 1024 * 1024
 MAX_RATIO = 200  # decompressed / compressed, checked once past RATIO_GRACE bytes
 RATIO_GRACE = 10 * 1024 * 1024
@@ -137,8 +138,18 @@ def check_text(head: bytes, name: str) -> None:
     if head.startswith(BINARY_MAGICS):
         raise UnsafeInputError(f"{name}: binary file (executable or document), not a log")
     sample = head[:SNIFF_BYTES]
-    if b"\x00" in sample:
-        raise UnsafeInputError(f"{name}: binary data (NUL bytes), not a text log")
+    # A few NUL bytes are normal in a web log: a client speaking TLS or garbage to a
+    # plain-HTTP port gets its bytes logged as the "request". Refusing the whole file
+    # for that would let one crafted request hide a log from analysis. Real binaries
+    # and UTF-16 text are full of NULs.
+    nul = sample.count(b"\x00")
+    if nul > max(MAX_TEXT_NULS, len(sample) // 100):
+        hint = " (UTF-16 text? convert it to UTF-8)" if _utf16_like(sample) else ""
+        raise UnsafeInputError(f"{name}: binary data (NUL bytes), not a text log{hint}")
+
+
+def _utf16_like(sample: bytes) -> bool:
+    return sample[:2] in (b"\xff\xfe", b"\xfe\xff") or sample[1:200:2].count(0) > 50
 
 
 class EvtxLines:

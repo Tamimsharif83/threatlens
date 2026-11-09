@@ -27,9 +27,12 @@ rule is always parsed fresh from its YAML before each compilation.
 from __future__ import annotations
 
 import re
+import re._constants as sre_constants  # type: ignore[import-not-found]
+import re._parser as sre_parse  # type: ignore[import-not-found]
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Any
 
 from sigma.backends.sqlite.sqlite import sqliteBackend
 from sigma.collection import SigmaCollection
@@ -282,4 +285,59 @@ def sql_regexp(pattern: str | None, value: object) -> bool:
     try:
         return _compiled(pattern).search(str(value)) is not None
     except re.error:
+        return False
+
+
+_REPEATS = {sre_constants.MAX_REPEAT, sre_constants.MIN_REPEAT}
+
+
+def _children(op: object, av: Any, *, atomic: bool) -> list[Any]:  # noqa: ANN401 - sre parse tree
+    """Sub-patterns of a parsed regex node. ``atomic``: also look inside atomic groups
+    and possessive repeats (they cannot backtrack *into*, but can backtrack *inside*)."""
+    if op in _REPEATS:
+        return [av[2]]
+    if op == sre_constants.SUBPATTERN:
+        return [av[3]]
+    if op == sre_constants.BRANCH:
+        return list(av[1])
+    if op in {sre_constants.ASSERT, sre_constants.ASSERT_NOT}:
+        return [av[1]]
+    if atomic and op == sre_constants.ATOMIC_GROUP:
+        return [av]
+    if atomic and op == sre_constants.POSSESSIVE_REPEAT:
+        return [av[2]]
+    return []
+
+
+def _has_repeat(items: Iterable[Any]) -> bool:
+    """Does a parsed (sub)pattern contain a backtracking variable-count repeat?"""
+    for op, av in items:
+        if op in _REPEATS and av[1] > av[0]:
+            return True
+        if any(_has_repeat(c) for c in _children(op, av, atomic=False)):
+            return True
+    return False
+
+
+def _nested(items: Iterable[Any]) -> bool:
+    for op, av in items:
+        if op in _REPEATS and av[1] > av[0] and _has_repeat(av[2]):
+            return True
+        if any(_nested(c) for c in _children(op, av, atomic=True)):
+            return True
+    return False
+
+
+@lru_cache(maxsize=512)
+def catastrophic_regex(pattern: str) -> bool:
+    """True for a repeated group that itself contains a repeat, such as ``(a+)+``.
+
+    Python's ``re`` backtracks: on a near-miss input such patterns take
+    exponential time, and SQLite's time limit cannot interrupt a Python
+    function. Atomic groups and possessive quantifiers (``(?>a+)+``, ``(a++)+``)
+    do not backtrack and are not reported.
+    """
+    try:
+        return _nested(sre_parse.parse(pattern))
+    except (re.error, RecursionError, OverflowError):
         return False

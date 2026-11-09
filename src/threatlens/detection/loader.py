@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -26,7 +26,13 @@ from sigma.validators.core import validators as core_validators
 
 from threatlens.attack.catalog import load as load_catalog
 from threatlens.attack.catalog import techniques_in_tags
-from threatlens.detection.compiler import CompileError, logsource_dict, parse_filter, parse_rule
+from threatlens.detection.compiler import (
+    CompileError,
+    catastrophic_regex,
+    logsource_dict,
+    parse_filter,
+    parse_rule,
+)
 
 RULE_SUFFIXES = (".yml", ".yaml")
 MAX_RULE_BYTES = 256 * 1024
@@ -285,6 +291,28 @@ def lint(result: LoadResult) -> list[LintIssue]:
                 add(f"level must be one of {', '.join(LEVELS)}")
             if not any(ATTACK_TECHNIQUE.match(t) for t in r.tags):
                 add("tags must include at least one ATT&CK technique (e.g. attack.t1190)")
-        for w in r.warnings:
+        for w in [*_regex_warnings(raw.get("detection")), *r.warnings]:
             add(f"warning: {w}")
     return issues
+
+
+def _regex_warnings(detection: object) -> list[str]:
+    return [
+        f"regex {pattern[:80]!r} nests repeats such as (a+)+; on a crafted log value it "
+        "can stall detection for hours. Remove the nesting or use an atomic group (?>...)"
+        for pattern in _regex_values(detection)
+        if catastrophic_regex(pattern)
+    ]
+
+
+def _regex_values(node: object, is_regex: bool = False) -> Iterator[str]:
+    """Values of ``field|re`` detection items, at any depth."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            modifiers = str(key).split("|")[1:]
+            yield from _regex_values(value, "re" in modifiers)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _regex_values(value, is_regex)
+    elif is_regex and isinstance(node, str):
+        yield node

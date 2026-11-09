@@ -135,12 +135,14 @@ def set_password(
     *,
     must_change: bool = False,
     keep_session_hash: str | None = None,
+    password_hash: str | None = None,
 ) -> None:
     """Set a password. Signs the user out everywhere (except, optionally, the session
-    that made the change)."""
+    that made the change). ``password_hash`` is the already computed hash, for callers
+    that hash outside a transaction (argon2 takes a while)."""
     conn.execute(
         "UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?",
-        (hash_password(password), int(must_change), user_id),
+        (password_hash or hash_password(password), int(must_change), user_id),
     )
     conn.execute(
         "DELETE FROM sessions WHERE user_id = ? AND token_hash IS NOT ?",

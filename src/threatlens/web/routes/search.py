@@ -9,10 +9,12 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse, Response
 
 from threatlens import audit
 from threatlens.alerts.triage import event_view
+from threatlens.auth.users import Role
 from threatlens.export import to_csv
 from threatlens.search.hunt import HuntResult, run_hunt
 from threatlens.search.query import (
@@ -43,19 +45,23 @@ EXAMPLE_HUNT = (
 )
 
 
+MAX_MS = 253_402_300_799_999  # 9999-12-31T23:59:59.999Z, the last datetime Python renders
+
+
 def _parse_time(value: str | None) -> int | None:
     """Accept unix ms (pivot links) or a datetime-local value, read as UTC."""
     if not value:
         return None
-    if value.isdigit():
-        return int(value)
+    if value.isascii() and value.isdigit():  # "²".isdigit() is True too
+        ms = int(value[:20])
+        return ms if ms <= MAX_MS else None
     try:
         dt = datetime.fromisoformat(value)
-    except ValueError:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return int(dt.timestamp() * 1000)
+    except (ValueError, OverflowError, OSError):
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return int(dt.timestamp() * 1000)
 
 
 def _local(ms: int | None) -> str:
@@ -199,11 +205,14 @@ async def hunt_run(
 ) -> Response:
     form = await request.form(max_files=0, max_fields=20)
     sql = str(form.get("sql", ""))[:20_000]
-    result = run_hunt(
+    # In a worker thread: a query may run for the whole time limit.
+    result = await run_in_threadpool(
+        run_hunt,
         settings.db_path,
         sql,
         row_limit=settings.hunt_row_limit,
         timeout_s=settings.hunt_timeout_seconds,
+        admin=session.user.role is Role.ADMIN,
     )
     with transaction(db):
         audit.record(

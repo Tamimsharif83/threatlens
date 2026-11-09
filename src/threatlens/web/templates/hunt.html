@@ -74,7 +74,7 @@
       {% for t, fields in schema.items() %}
       <details><summary class="mono">{{ t }}</summary><p class="small mono wrap">tl_id, tl_ts, {% for f in fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %}</p></details>
       {% else %}<p class="empty">No event tables yet.</p>{% endfor %}
-      <p class="small muted">Also readable: alerts, alert_events, rules, ingest_batches, sources, saved_hunts, suppressions, audit_log. Not readable: users, sessions.</p>
+      <p class="small muted">Also readable: alerts, alert_events, rules, ingest_batches, sources, saved_hunts, suppressions, cases{% if user.is_admin %}, audit_log{% endif %}. Not readable: users, sessions{% if not user.is_admin %}, audit_log (admins only){% endif %}.</p>
     </section>
   </aside>
 </div>

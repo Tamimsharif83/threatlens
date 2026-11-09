@@ -7,12 +7,19 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse, Response
 from starlette.datastructures import FormData
 
 from threatlens import audit, runtime_settings
-from threatlens.auth.passwords import MIN_PASSWORD_LENGTH, generate_password
+from threatlens.auth.passwords import (
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    generate_password,
+    hash_password,
+)
 from threatlens.auth.sessions import token_hash
+from threatlens.auth.throttle import LoginThrottle
 from threatlens.auth.users import (
     Role,
     check_password,
@@ -250,7 +257,17 @@ async def change_password(
     new = str(form.get("new_password", ""))
     confirm = str(form.get("confirm_password", ""))
     error = None
-    if not check_password(db, session.user.id, current):
+    # The same throttle as the login form: a stolen session must not be a way to
+    # guess the current password. argon2 runs in a worker thread.
+    throttle: LoginThrottle = request.app.state.throttle
+    ip = client_ip(request)
+    wait = throttle.retry_after(ip, session.user.username)
+    if wait:
+        error = f"Too many wrong passwords. Try again in {wait} seconds."
+    elif not await run_in_threadpool(check_password, db, session.user.id, current):
+        throttle.failure(ip, session.user.username)
+        with transaction(db):
+            audit.record(db, "user.password_change.failure", actor=session.user.username, ip=ip)
         error = "Current password is wrong."
     elif new != confirm:
         error = "The new passwords do not match."
@@ -258,6 +275,8 @@ async def change_password(
         error = "Choose a password different from the current one."
     elif len(new) < MIN_PASSWORD_LENGTH:
         error = f"Use at least {MIN_PASSWORD_LENGTH} characters."
+    elif len(new) > MAX_PASSWORD_LENGTH:
+        error = f"Use at most {MAX_PASSWORD_LENGTH} characters."
     if error:
         return render(
             request,
@@ -270,10 +289,16 @@ async def change_password(
             },
             status_code=400,
         )
+    throttle.success(ip, session.user.username)
     token = session_token(request, settings)
+    new_hash = await run_in_threadpool(hash_password, new)
     with transaction(db):
         set_password(
-            db, session.user.id, new, keep_session_hash=token_hash(token) if token else None
+            db,
+            session.user.id,
+            new,
+            keep_session_hash=token_hash(token) if token else None,
+            password_hash=new_hash,
         )
         audit.record(db, "user.password_change", actor=session.user.username, ip=client_ip(request))
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
