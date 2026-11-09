@@ -19,13 +19,14 @@ rule is always parsed fresh from its YAML before each compilation.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 
 from sigma.backends.sqlite.sqlite import sqliteBackend
 from sigma.collection import SigmaCollection
 from sigma.correlations import SigmaCorrelationRule
+from sigma.filters import SigmaFilter
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
 from sigma.processing.transformations import (
     AddConditionTransformation,
@@ -150,10 +151,30 @@ def backend_for(logsource: dict[str, str], table: str) -> sqliteBackend:
     )
 
 
-def compile_detection(yaml_text: str, table: str) -> CompiledRule:
+def parse_filter(yaml_text: str) -> SigmaFilter:
+    try:
+        collection = SigmaCollection.from_yaml(yaml_text, collect_filters=True)
+    except Exception as exc:
+        raise CompileError(str(exc)) from exc
+    if len(collection.filters) != 1:
+        raise CompileError("expected exactly one Sigma filter")
+    return collection.filters[0]
+
+
+def compile_detection(yaml_text: str, table: str, filters: Sequence[str] = ()) -> CompiledRule:
+    """Compile a detection rule for ``table``, with Sigma ``filters`` (YAML) applied."""
     rule = parse_rule(yaml_text)
     if not isinstance(rule, SigmaRule):
         raise CompileError("not a detection rule")
+    for filter_yaml in filters:
+        try:
+            applied = parse_filter(filter_yaml).apply_on_rule(rule)
+        except CompileError:
+            continue  # a broken filter is reported on its own; never breaks a rule
+        except Exception as exc:
+            raise CompileError(f"applying a Sigma filter failed: {exc}") from exc
+        if isinstance(applied, SigmaRule):
+            rule = applied
     logsource = logsource_dict(rule)
     backend = backend_for(logsource, table)
     try:

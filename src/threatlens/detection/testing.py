@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -117,7 +118,7 @@ EventKey = tuple[str, int]  # (table, tl_id)
 
 
 def _evaluate(
-    rule: LoadedRule, tp: list[Event], tn: list[Event]
+    rule: LoadedRule, tp: list[Event], tn: list[Event], filters: Sequence[str] = ()
 ) -> tuple[dict[str, set[EventKey]], set[EventKey], list[str]]:
     """Load the fixtures into a scratch database and run the rule over them.
 
@@ -144,7 +145,7 @@ def _evaluate(
             for table in rule_tables:
                 if table not in present:
                     continue
-                compiled = compile_detection(rule.yaml, table)
+                compiled = compile_detection(rule.yaml, table, filters)
                 existing = store.table_columns(table)
                 with transaction(conn):
                     for f in compiled.fields:
@@ -160,7 +161,9 @@ def _evaluate(
             conn.close()
 
 
-def run_rule_test(rule: LoadedRule, test_dirs: list[Path]) -> RuleTestResult:
+def run_rule_test(
+    rule: LoadedRule, test_dirs: list[Path], filters: Sequence[str] = ()
+) -> RuleTestResult:
     result = RuleTestResult(rule.id, rule.title, "none")
     if rule.kind != "detection":
         result.messages.append("correlation rule tests arrive with correlation support")
@@ -186,7 +189,7 @@ def run_rule_test(rule: LoadedRule, test_dirs: list[Path]) -> RuleTestResult:
         return result
 
     try:
-        ids, matched, rule_tables = _evaluate(rule, tp or [], tn or [])
+        ids, matched, rule_tables = _evaluate(rule, tp or [], tn or [], filters)
     except CompileError as exc:
         result.status = "fail"
         result.messages.append(f"cannot compile: {exc}")

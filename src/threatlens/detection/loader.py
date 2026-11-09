@@ -24,7 +24,7 @@ from sigma.rule import SigmaRule
 from sigma.validation import SigmaValidator
 from sigma.validators.core import validators as core_validators
 
-from threatlens.detection.compiler import CompileError, logsource_dict, parse_rule
+from threatlens.detection.compiler import CompileError, logsource_dict, parse_filter, parse_rule
 
 RULE_SUFFIXES = (".yml", ".yaml")
 MAX_RULE_BYTES = 256 * 1024
@@ -75,6 +75,7 @@ class LoadedRule:
 @dataclass(slots=True)
 class LoadResult:
     rules: list[LoadedRule] = field(default_factory=list)
+    filters: list[LoadedRule] = field(default_factory=list)  # Sigma filter documents
     file_errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -144,10 +145,13 @@ def load_document(doc: str, path: str, origin: str) -> LoadedRule:
     rule_id = str(raw.get("id") or "").strip()
     if not rule_id:
         raise ValueError("rule has no 'id'")
+    kind = "correlation" if "correlation" in raw else "detection"
+    if "filter" in raw and "detection" not in raw:
+        kind = "filter"
     lr = LoadedRule(
         id=rule_id,
         title=str(raw.get("title") or "(untitled)")[:300],
-        kind="correlation" if "correlation" in raw else "detection",
+        kind=kind,
         origin=origin,
         path=path,
         yaml=doc,
@@ -165,6 +169,12 @@ def load_document(doc: str, path: str, origin: str) -> LoadedRule:
         falsepositives=_as_str_list(raw.get("falsepositives")),
         references=_as_str_list(raw.get("references")),
     )
+    if kind == "filter":
+        try:
+            parse_filter(doc)
+        except CompileError as exc:
+            lr.load_error = f"invalid Sigma filter: {exc}"
+        return lr
     try:
         rule = parse_rule(doc)
     except (SigmaError, CompileError, ValueError, TypeError, KeyError) as exc:
@@ -211,7 +221,7 @@ def load_rules(sources: Iterable[tuple[Path, str]]) -> LoadResult:
                         )
                         continue
                     seen[lr.id] = display
-                    result.rules.append(lr)
+                    (result.filters if lr.kind == "filter" else result.rules).append(lr)
             except (ValueError, OSError, UnicodeDecodeError) as exc:
                 result.file_errors[display] = str(exc)
     return result
@@ -243,6 +253,7 @@ REQUIRED = (
 def lint(result: LoadResult) -> list[LintIssue]:
     """Detection-as-code checks: valid Sigma, unique ids, complete metadata."""
     issues = [LintIssue(p, None, e) for p, e in sorted(result.file_errors.items())]
+    issues += [LintIssue(f.path, f.id, f.load_error) for f in result.filters if f.load_error]
     for r in result.rules:
 
         def add(message: str, rule: LoadedRule = r) -> None:

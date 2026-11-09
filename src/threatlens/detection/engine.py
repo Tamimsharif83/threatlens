@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from threatlens.alerts.store import Match, RecordResult, RuleInfo, entities_from_row, record_matches
+from threatlens.alerts.suppress import Suppression, active_for_rule, record_hits
 from threatlens.config import Settings
 from threatlens.detection.compiler import (
     CompiledRule,
@@ -58,12 +59,14 @@ class ReloadReport:
     loaded: int = 0
     errors: int = 0
     removed: int = 0
+    filters: int = 0
     file_errors: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class RunReport:
     rules_run: int = 0
+    suppressed: int = 0
     result: RecordResult = field(default_factory=RecordResult)
     errors: dict[str, str] = field(default_factory=dict)
 
@@ -97,6 +100,7 @@ class DetectionEngine:
         self.settings = settings
         self._lock = threading.RLock()
         self._compiled: dict[tuple[str, str], CompiledRule | str] = {}  # value: query or error
+        self._filters: list[str] = []  # YAML of valid Sigma filters
 
     # ---------------------------------------------------------------- loading
 
@@ -118,6 +122,17 @@ class DetectionEngine:
             gone = [rid for rid in previous if rid not in current]
             conn.executemany("DELETE FROM rules WHERE id = ?", [(rid,) for rid in gone])
             report.removed = len(gone)
+            conn.execute("DELETE FROM sigma_filters")
+            conn.executemany(
+                "INSERT INTO sigma_filters (id, title, path, yaml, sha256, load_error, loaded_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (f.id, f.title, f.path, f.yaml, f.sha256, f.load_error, now)
+                    for f in result.filters
+                ],
+            )
+            self._filters = [f.yaml for f in result.filters if f.load_error is None]
+            report.filters = len(result.filters)
             conn.execute("DELETE FROM rule_load_errors")
             conn.executemany(
                 "INSERT INTO rule_load_errors (path, error, seen_at) VALUES (?, ?, ?)",
@@ -203,7 +218,7 @@ class DetectionEngine:
         with self._lock:
             if key not in self._compiled:
                 try:
-                    self._compiled[key] = compile_detection(yaml_text, table)
+                    self._compiled[key] = compile_detection(yaml_text, table, self._filters)
                 except CompileError as exc:
                     self._compiled[key] = str(exc)
             return self._compiled[key]
@@ -252,7 +267,13 @@ class DetectionEngine:
                     )
 
     def _matches(
-        self, conn: sqlite3.Connection, compiled: CompiledRule, lo: int, hi: int
+        self,
+        conn: sqlite3.Connection,
+        compiled: CompiledRule,
+        lo: int,
+        hi: int,
+        suppressions: list[Suppression],
+        suppressed: dict[int, int],
     ) -> list[Match]:
         cursor = conn.execute(
             f"SELECT * FROM ({compiled.sql}) WHERE {ID} BETWEEN ? AND ?",
@@ -260,6 +281,12 @@ class DetectionEngine:
         )
         out = []
         for row in cursor:
+            if suppressions:
+                values = {k: row[k] for k in row.keys()}  # noqa: SIM118 - sqlite3.Row
+                hit = next((s for s in suppressions if s.matches(values)), None)
+                if hit is not None:
+                    suppressed[hit.id] = suppressed.get(hit.id, 0) + 1
+                    continue
             out.append(Match(compiled.table, row[ID], row["tl_ts"], entities_from_row(row)))
         return out
 
@@ -277,6 +304,8 @@ class DetectionEngine:
             rule["id"], rule["title"], rule["level"] or "medium", json.loads(rule["tags"])
         )
         window = self.settings.alert_throttle_minutes * 60_000
+        suppressions = active_for_rule(conn, rule["id"])
+        suppressed: dict[int, int] = {}
         for table in tables_for(json.loads(rule["logsource"]), catalog):
             if table not in ranges or table not in existing:
                 continue
@@ -287,7 +316,7 @@ class DetectionEngine:
             self._ensure_columns(conn, compiled)
             for lo, hi in ranges[table]:  # one range at a time keeps memory bounded
                 try:
-                    matched = self._matches(conn, compiled, lo, hi)
+                    matched = self._matches(conn, compiled, lo, hi, suppressions, suppressed)
                 except sqlite3.Error as exc:
                     report.errors[rule["id"]] = f"query failed on {table}: {exc}"
                     log.warning("rule query failed", extra={"rule": rule["id"], "error": str(exc)})
@@ -295,6 +324,10 @@ class DetectionEngine:
                 if matched:
                     with transaction(conn):
                         report.result.merge(record_matches(conn, info, matched, window, origin))
+        if suppressed:
+            with transaction(conn):
+                record_hits(conn, rule["id"], suppressed)
+            report.suppressed += sum(suppressed.values())
         report.rules_run += 1
 
     def run_ranges(
@@ -355,7 +388,7 @@ class DetectionEngine:
                 logsource=json.loads(row["logsource"]),
                 load_error=row["load_error"],
             )
-            results.append(run_rule_test(lr, dirs))
+            results.append(run_rule_test(lr, dirs, self._filters))
         now = now_ms()
         with transaction(conn):
             conn.executemany(
