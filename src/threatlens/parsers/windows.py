@@ -13,6 +13,12 @@ values as ``EventID``, ``Channel``, ``Computer``, ``Provider_Name`` ...; named
 added for alert grouping, pivots and IOC extraction (``host.name``,
 ``user.name``, ``source.ip``, ``file.hash.*`` ...).
 
+Flat exports are read too: one JSON object per event with ``Channel`` and
+``EventID`` at the top level, as in the OTRF Security-Datasets (Mordor),
+NXLog's ``to_json()`` and many Winlogbeat-to-file pipelines. Their fields
+already carry the Windows names; ``Hostname`` and ``SourceName`` become
+``Computer`` and ``Provider_Name``.
+
 The channel picks the Sigma log source and so the event table:
 ``Security`` -> ``product: windows, service: security`` -> ``ev_windows_security``.
 The channel names come from pySigma's Windows pipeline, so routing matches the
@@ -31,6 +37,7 @@ from typing import Any
 from sigma.pipelines.common import windows_logsource_mapping
 
 from threatlens.normalize.schema import Event, LogSource
+from threatlens.normalize.values import flatten
 from threatlens.parsers.base import ParseContext, ParseError, Parser
 from threatlens.timeutil import TimestampError, parse_iso8601
 
@@ -84,6 +91,15 @@ EVENT_ACTIONS: dict[tuple[str, int], str] = {
     ("system", 104): "event-log-cleared",
     ("system", 7036): "service-state-changed",
     ("system", 7045): "service-installed",
+}
+
+# Time keys of flat exports, best first.
+_FLAT_TIME_KEYS = ("TimeCreated", "@timestamp", "EventTime", "TimeGenerated", "timestamp")
+# Flat-export names -> the names Sigma's Windows rules and this parser use.
+_FLAT_ALIASES = {
+    "Hostname": "Computer",
+    "SourceName": "Provider_Name",
+    "ProviderName": "Provider_Name",
 }
 
 # First present, meaningful value wins.
@@ -244,9 +260,11 @@ class WindowsEventParser(Parser):
             obj = json.loads(line)
         except (json.JSONDecodeError, RecursionError) as exc:
             raise ParseError(f"invalid JSON: {exc}") from exc
+        if isinstance(obj, dict) and "Event" not in obj and "Channel" in obj and "EventID" in obj:
+            return self._parse_flat(obj, line, ctx)
         event = obj.get("Event") if isinstance(obj, dict) else None
         if not isinstance(event, dict) or not isinstance(event.get("System"), dict):
-            raise ParseError("not a Windows event record (no Event.System)")
+            raise ParseError("not a Windows event record (no Event.System, no Channel/EventID)")
         system: dict[str, Any] = event["System"]
         created = _attrs(system.get("TimeCreated")).get("SystemTime")
         if not created:
@@ -270,5 +288,30 @@ class WindowsEventParser(Parser):
             fields[key] = value
         fields.update(extra)
         logsource = logsource_for_channel(fields.get("Channel"))
+        _ecs(fields, logsource.service)
+        return Event(ts, fields, logsource, raw=line)
+
+    def _parse_flat(self, obj: dict[str, Any], line: str, ctx: ParseContext) -> Event:
+        created: object = next((obj[k] for k in _FLAT_TIME_KEYS if obj.get(k)), None)
+        if isinstance(created, Mapping):  # {"SystemTime": "..."}
+            created = created.get("SystemTime") or _attrs(created).get("SystemTime")
+        if not created:
+            raise ParseError("Windows event has no TimeCreated/@timestamp")
+        try:
+            ts = parse_iso8601(str(created), ctx.tz)
+        except TimestampError as exc:
+            raise ParseError(f"bad timestamp {str(created)[:64]!r}: {exc}") from exc
+        fields: dict[str, Any] = {}
+        for key, value in flatten(obj).items():
+            if value is None or key in _FLAT_TIME_KEYS:
+                continue
+            fields[key] = _text(value)
+        for flat, name in _FLAT_ALIASES.items():
+            if flat in fields and name not in fields:
+                fields[name] = fields[flat]
+        event_id = _int(fields["EventID"])
+        if event_id >= 0:
+            fields["EventID"] = event_id
+        logsource = logsource_for_channel(str(fields.get("Channel") or ""))
         _ecs(fields, logsource.service)
         return Event(ts, fields, logsource, raw=line)
