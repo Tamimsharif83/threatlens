@@ -195,6 +195,8 @@ class AlertRow:
     resolution: str | None
     assignee: str | None
     created_at: int
+    kind: str = "detection"
+    metric: dict[str, Any] | None = None
 
 
 def _alert(row: sqlite3.Row) -> AlertRow:
@@ -213,6 +215,8 @@ def _alert(row: sqlite3.Row) -> AlertRow:
         resolution=row["resolution"],
         assignee=row["assignee"],
         created_at=row["created_at"],
+        kind=row["kind"],
+        metric=json.loads(row["metric"]) if row["metric"] else None,
     )
 
 
@@ -262,3 +266,142 @@ def top_rules(conn: sqlite3.Connection, limit: int = 10) -> list[tuple[str, str,
         (limit,),
     ).fetchall()
     return [(r[0], r[1], int(r[2]), int(r[3])) for r in rows]
+
+
+# ---------------------------------------------------------------- correlation alerts
+
+
+@dataclass(frozen=True, slots=True)
+class CorrelationHit:
+    """One sliding-window result of a correlation rule."""
+
+    group: dict[str, str]  # group-by key -> value (keys mapped to stored field names)
+    events: list[tuple[str, int, int]]  # (table, event id, event ts)
+    metric_type: str
+    metric_value: float | int | None
+    window_start: int  # ms
+    window_end: int  # ms
+
+
+def record_correlation(
+    conn: sqlite3.Connection,
+    rule: RuleInfo,
+    hits: Iterable[CorrelationHit],
+    base_rule_ids: tuple[str, ...],
+    window_ms: int,
+    origin: str,
+) -> RecordResult:
+    """Merge window results into one alert per group (must be called inside a transaction).
+
+    The backend returns one row per sliding window, so the same burst shows up in
+    many overlapping windows. Events already referenced by this correlation are
+    skipped; a window with no new events changes nothing. New events join the
+    group's open alert when they are within ``window_ms`` of it, and every base-rule
+    alert on the same events is linked as a child.
+    """
+    result = RecordResult()
+    now = now_ms()
+    level = rule.level if rule.level in LEVELS else "medium"
+    marks = ",".join("?" * len(base_rule_ids))
+    for hit in sorted(hits, key=lambda h: (h.window_start, h.window_end)):
+        new_events = [
+            (t, eid, ts)
+            for t, eid, ts in hit.events
+            if conn.execute(
+                "SELECT 1 FROM alert_events WHERE rule_id = ? AND table_name = ? AND event_id = ?",
+                (rule.id, t, eid),
+            ).fetchone()
+            is None
+        ]
+        if not new_events:
+            continue
+        first = min(ts for _, _, ts in new_events)
+        last = max(ts for _, _, ts in new_events)
+        key = rule.id + "|" + json.dumps(hit.group, sort_keys=True, separators=(",", ":"))
+        metric = json.dumps(
+            {
+                "type": hit.metric_type,
+                "value": hit.metric_value,
+                "window_start": hit.window_start,
+                "window_end": hit.window_end,
+            }
+        )
+        row = conn.execute(
+            "SELECT id, first_seen, last_seen FROM alerts WHERE group_key = ? AND "
+            "status != 'closed' ORDER BY last_seen DESC LIMIT 1",
+            (key,),
+        ).fetchone()
+        if row is not None and first <= row[2] + window_ms:
+            alert_id = row[0]
+            conn.execute(
+                "UPDATE alerts SET event_count = event_count + ?, first_seen = min(first_seen, ?),"
+                " last_seen = max(last_seen, ?), metric = ?, updated_at = ? WHERE id = ?",
+                (len(new_events), first, last, metric, now, alert_id),
+            )
+            if alert_id not in result.new_alerts:
+                result.updated_alerts.add(alert_id)
+        else:
+            cur = conn.execute(
+                "INSERT INTO alerts (rule_id, rule_title, level, tags, origin, group_key, "
+                "entities, first_seen, last_seen, event_count, created_at, updated_at, kind, "
+                "metric) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'correlation', ?)",
+                (
+                    rule.id,
+                    rule.title,
+                    level,
+                    json.dumps(rule.tags),
+                    origin,
+                    key,
+                    json.dumps(hit.group, sort_keys=True),
+                    first,
+                    last,
+                    len(new_events),
+                    now,
+                    now,
+                    metric,
+                ),
+            )
+            assert cur.lastrowid is not None  # noqa: S101
+            alert_id = cur.lastrowid
+            result.new_alerts.append(alert_id)
+        conn.executemany(
+            "INSERT OR IGNORE INTO alert_events (rule_id, table_name, event_id, alert_id, "
+            "event_ts) VALUES (?, ?, ?, ?, ?)",
+            [(rule.id, t, eid, alert_id, ts) for t, eid, ts in new_events],
+        )
+        result.events += len(new_events)
+        if base_rule_ids:
+            for t, eid, _ in new_events:
+                conn.execute(
+                    "INSERT OR IGNORE INTO alert_links (parent_id, child_id) "
+                    f"SELECT ?, alert_id FROM alert_events WHERE rule_id IN ({marks}) "
+                    "AND table_name = ? AND event_id = ?",
+                    (alert_id, *base_rule_ids, t, eid),
+                )
+    if result.events:
+        conn.execute(
+            "UPDATE rules SET hits = hits + ?, alerts = alerts + ?, last_fired_at = ? WHERE id = ?",
+            (result.events, len(result.new_alerts), now, rule.id),
+        )
+    return result
+
+
+def linked_alerts(conn: sqlite3.Connection, alert_id: int) -> tuple[list[AlertRow], list[AlertRow]]:
+    """(children, parents) of an alert."""
+    children = [
+        _alert(r)
+        for r in conn.execute(
+            "SELECT a.* FROM alert_links l JOIN alerts a ON a.id = l.child_id "
+            "WHERE l.parent_id = ? ORDER BY a.first_seen",
+            (alert_id,),
+        )
+    ]
+    parents = [
+        _alert(r)
+        for r in conn.execute(
+            "SELECT a.* FROM alert_links l JOIN alerts a ON a.id = l.parent_id "
+            "WHERE l.child_id = ? ORDER BY a.first_seen",
+            (alert_id,),
+        )
+    ]
+    return children, parents
