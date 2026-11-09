@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-09
+
+Phase 6: ATT&CK coverage and rule metrics.
+
+### Added
+- Bundled MITRE ATT&CK Enterprise v20.0 technique and tactic list, generated from
+  MITRE's STIX by `scripts/gen_attack_techniques.py` (source hash recorded); no
+  runtime download.
+- ATT&CK coverage matrix: enabled, compiling rules per technique, with levels
+  (rules / tested / tested and fired), sub-technique rules counted toward the
+  parent, "covered only" filter, and warnings for tags not in the bundled release.
+- ATT&CK Navigator layer export (layer format 4.5).
+- Rule metrics: events, alerts, suppressed hits, open alerts, TP / FP / benign
+  verdicts, precision = TP / (TP + FP), noisiest rules, sortable.
+- `rules lint` warns on technique tags that are revoked, deprecated or mistyped.
+- Docs: ADR-0009, `docs/attack-coverage.md`, MITRE attribution.
+
+### Changed
+- Case findings and reports show technique names from the bundled catalogue.
+
 ## [0.6.0] - 2026-11-09
 
 Phase 5: cases and reports.

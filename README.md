@@ -107,7 +107,7 @@ Compose file or the documented commands stop binding to localhost.
 | Triage | Alert queue (statuses, verdicts, assignee, notes, bulk actions, keyboard), "why it fired" with highlighted fields, entity pivots ±1 h, field search, read-only SQL hunt console with saved hunts and safe CSV export, Sigma filters + suppressions (reason, author, expiry, hit counts), audit log | ✅ Phase 3 |
 | Correlation | Sigma v2 `event_count`, `value_count`, `value_sum`, `value_avg`, `temporal`, `temporal_ordered`, across log sources with aliases; one alert per group, linked to child alerts; `generate` honoured | ✅ Phase 4 |
 | Cases & reports | Cases from alerts (bulk or single), merged event-time timeline with annotations, ATT&CK findings, IOCs (auto-extracted + manual, CSV/JSON), notes, severity/status/owner; incident report (summary, scope, timeline, findings, IOCs, impact, root cause, recommendations, appendix) as Markdown and print-ready self-contained HTML | ✅ Phase 5 |
-| Coverage | ATT&CK matrix, Navigator layer export, per-rule precision metrics | Phase 6 |
+| Coverage & metrics | ATT&CK v20.0 matrix (bundled, offline) with levels for rules / tested / fired, sub-techniques roll up, stale-tag warnings, Navigator layer export; per-rule events, alerts, verdicts, precision and noisiest rules — see [docs/attack-coverage.md](docs/attack-coverage.md) | ✅ Phase 6 |
 | Windows | EVTX: Security, Sysmon, PowerShell | Phase 7 |
 
 ## Architecture
@@ -226,8 +226,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 3 | Triage | ✅ done |
 | 4 | Correlation | ✅ done |
 | 5 | Cases & reports | ✅ done |
-| 6 | ATT&CK coverage & metrics | next |
-| 7 | Windows EVTX | |
+| 6 | ATT&CK coverage & metrics | ✅ done |
+| 7 | Windows EVTX | next |
 | 8 | Hardening & v1.0.0 release | |
 
 Non-goals for v1: endpoint agents, clustering, machine learning, cloud
@@ -244,3 +244,8 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 [Apache-2.0](LICENSE). Bundled third-party assets keep their own licenses — see
 [`src/threatlens/web/static/vendor/VENDORED.md`](src/threatlens/web/static/vendor/VENDORED.md).
+
+MITRE ATT&CK® is a registered trademark of The MITRE Corporation. ThreatLens
+bundles a list of ATT&CK technique and tactic names, used under the
+[ATT&CK terms of use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/)
+(see [`src/threatlens/attack/data/README.md`](src/threatlens/attack/data/README.md)).
