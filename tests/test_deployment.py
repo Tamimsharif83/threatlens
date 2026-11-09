@@ -105,6 +105,7 @@ def test_shipped_data_files_are_not_git_ignored() -> None:
         pytest.skip("git not available")
     fixtures = sorted((ROOT / "tests" / "rules").rglob("*.*"))
     fixtures += sorted((ROOT / "src" / "threatlens" / "attack" / "data").glob("*.*"))
+    fixtures += sorted((ROOT / "tests" / "fixtures").rglob("*.*"))
     assert len(fixtures) > 2
     result = subprocess.run(
         [git, "check-ignore", *[str(f) for f in fixtures]],

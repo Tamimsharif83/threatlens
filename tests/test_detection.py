@@ -93,7 +93,8 @@ CATALOG = [
         ({"product": "ecs", "category": "file"}, ["ev_ecs"]),
         ({"product": "app", "service": "audit"}, ["ev_app_audit"]),
         ({"product": "app"}, ["ev_app_audit"]),
-        ({"product": "windows", "service": "security"}, []),
+        ({"product": "windows", "service": "security"}, ["ev_windows_security"]),
+        ({"product": "macos", "category": "process_creation"}, []),
         ({}, []),
     ],
 )
@@ -501,12 +502,22 @@ def test_import_sigmahq(tmp_path: Path) -> None:
             "sel: {Image|endswith: x.exe}\ncondition: sel\n",
         ),
     )
+    write_rule(
+        clone / "rules" / "macos" / "process_creation",
+        "mac.yml",
+        rule_yaml(
+            "10000000-0000-0000-0000-000000000052",
+            "{product: macos, category: process_creation}",
+            "sel: {Image|endswith: x}\ncondition: sel\n",
+        ),
+    )
     write_rule(clone / "rules" / "linux" / "builtin", "bad.yml", "key: [unclosed\n")
     (clone / "LICENSE.Detection.Rules.md").write_text("DRL 1.1")
     target = tmp_path / "out"
     report = import_sigmahq(clone, target)
-    assert report.imported == 1 and report.skipped == 1 and len(report.errors) == 1
+    assert report.imported == 2 and report.skipped == 1 and len(report.errors) == 1
     assert (target / "rules/web/webserver_generic/web_a.yml").exists()
+    assert (target / "rules/windows/process_creation/proc.yml").exists()  # Phase 7
     assert (target / "LICENSE.Detection.Rules.md").read_text() == "DRL 1.1"
     assert "Detection Rule License" in (target / "README.md").read_text()
     assert import_sigmahq(tmp_path / "empty", target).errors
