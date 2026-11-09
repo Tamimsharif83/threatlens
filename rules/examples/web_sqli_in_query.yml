@@ -1,0 +1,33 @@
+title: "[Example] SQL Injection Pattern in URL Query"
+id: 3815fe7c-7c88-4597-aa81-98ebaabeeb5f
+status: experimental
+description: |
+  EXAMPLE RULE shipped with ThreatLens to demonstrate the platform.
+  Flags web requests whose query string contains common SQL injection fragments.
+  Write and tune your own detections; this is not a production rule.
+references:
+  - https://owasp.org/www-community/attacks/SQL_Injection
+  - https://attack.mitre.org/techniques/T1190/
+author: ThreatLens examples
+date: 2026-11-08
+tags:
+  - attack.initial-access
+  - attack.t1190
+logsource:
+  category: webserver
+detection:
+  selection:
+    cs-uri-query|contains:
+      - "%20union%20select%20"
+      - "%20union%20all%20select%20"
+      - " union select "
+      - "%27%20or%20%271%27%3d%271"
+      - "' or '1'='1"
+      - "%27%20OR%20%271"
+      - "sleep("
+      - "information_schema"
+  condition: selection
+falsepositives:
+  - Search pages that let users type SQL-like text
+  - Security scanners you run yourself
+level: high

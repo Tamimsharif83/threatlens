@@ -1,0 +1,4 @@
+{"@timestamp":"2026-01-05T10:00:00Z","event":{"category":"file","action":"file-upload"},"file":{"name":"invoice.pdf"}}
+{"@timestamp":"2026-01-05T10:00:01Z","event":{"category":"web","action":"http-request"},"file":{"name":"shell.php"}}
+{"@timestamp":"2026-01-05T10:00:02Z","event":{"category":"file","action":"file-download"},"file":{"name":"report.php"}}
+{"@timestamp":"2026-01-05T10:00:03Z","event":{"category":"file","action":"file-upload"},"file":{"name":"notes.php.txt"}}

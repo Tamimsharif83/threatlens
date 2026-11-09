@@ -1,0 +1,28 @@
+title: "[Example] Failed SSH Login"
+id: d3b91716-cedd-4375-893e-31635e879920
+name: example_ssh_failed_login
+status: experimental
+description: |
+  EXAMPLE RULE shipped with ThreatLens to demonstrate the platform.
+  A single failed SSH login is not suspicious on its own; this rule exists as the
+  building block for a brute-force correlation rule (event_count by source.ip).
+references:
+  - https://attack.mitre.org/techniques/T1110/
+author: ThreatLens examples
+date: 2026-11-08
+tags:
+  - attack.credential-access
+  - attack.t1110
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    event.action:
+      - ssh_login
+      - ssh_invalid_user
+    event.outcome: failure
+  condition: selection
+falsepositives:
+  - Users mistyping their password
+level: low

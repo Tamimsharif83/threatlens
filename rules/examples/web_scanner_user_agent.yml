@@ -1,0 +1,30 @@
+title: "[Example] Known Vulnerability Scanner User Agent"
+id: 52aae84e-25a3-483f-b8d5-649cda5d9c73
+status: experimental
+description: |
+  EXAMPLE RULE shipped with ThreatLens to demonstrate the platform.
+  Flags requests from well-known automated scanners that announce themselves in the User-Agent.
+references:
+  - https://attack.mitre.org/techniques/T1595/002/
+author: ThreatLens examples
+date: 2026-11-08
+tags:
+  - attack.reconnaissance
+  - attack.t1595.002
+logsource:
+  category: webserver
+detection:
+  selection:
+    cs-user-agent|contains:
+      - sqlmap
+      - nikto
+      - nuclei
+      - masscan
+      - zgrab
+      - wpscan
+      - dirbuster
+      - gobuster
+  condition: selection
+falsepositives:
+  - Authorised penetration tests and your own vulnerability scans
+level: medium

@@ -1,0 +1,31 @@
+title: "[Example] Server-Side Script Uploaded Through the Application"
+id: b1eb9239-2afa-438d-8cb4-2bf6607e2de8
+status: experimental
+description: |
+  EXAMPLE RULE shipped with ThreatLens to demonstrate the platform.
+  Flags application file-upload events (ECS JSON) where the stored file has a
+  server-side script extension, a common way to plant a web shell.
+references:
+  - https://attack.mitre.org/techniques/T1505/003/
+author: ThreatLens examples
+date: 2026-11-08
+tags:
+  - attack.persistence
+  - attack.t1505.003
+logsource:
+  product: ecs
+  category: file
+detection:
+  selection:
+    event.action: file-upload
+    file.name|endswith:
+      - .php
+      - .phtml
+      - .jsp
+      - .jspx
+      - .asp
+      - .aspx
+  condition: selection
+falsepositives:
+  - Applications that legitimately accept code uploads (e.g. plugin managers)
+level: critical

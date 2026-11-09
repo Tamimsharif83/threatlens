@@ -1,0 +1,30 @@
+title: "[Example] User Added to a Privileged Linux Group"
+id: ede6d3c1-7f08-41f7-9802-b2b14d3d47c3
+status: experimental
+description: |
+  EXAMPLE RULE shipped with ThreatLens to demonstrate the platform.
+  Uses the structured fields ThreatLens extracts from auth.log (event.action, group.name)
+  to flag an account being added to sudo/wheel/admin/root.
+references:
+  - https://attack.mitre.org/techniques/T1098/
+author: ThreatLens examples
+date: 2026-11-08
+tags:
+  - attack.persistence
+  - attack.privilege-escalation
+  - attack.t1098
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    event.action: user_added_to_group
+    group.name:
+      - sudo
+      - wheel
+      - admin
+      - root
+  condition: selection
+falsepositives:
+  - Planned administrator onboarding
+level: high
