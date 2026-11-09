@@ -42,6 +42,8 @@ class Job:
     malformed: int = 0
     batch_ids: list[int] = field(default_factory=list)
     error: str | None = None
+    task: Callable[[], str] | None = None  # non-ingest work (retro-hunt)
+    result: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -123,12 +125,42 @@ class IngestWorker:
     def idle(self) -> bool:
         return all(j.state in ("done", "failed") for j in list(self.jobs.values()))
 
+    def submit_task(self, name: str, fn: Callable[[], str]) -> Job:
+        """Queue a non-ingest task (e.g. a retro-hunt) on the same single writer."""
+        job = Job(
+            id=secrets.token_urlsafe(12),
+            file_name=name,
+            path=Path(),
+            opts=IngestOptions(),
+            size=0,
+            task=fn,
+        )
+        with self._lock:
+            self.jobs[job.id] = job
+        self._queue.put(job)
+        return job
+
     def _run(self) -> None:
         while True:
             job = self._queue.get()
             if job is None:
                 return
-            self._process(job)
+            if job.task is not None:
+                self._run_task(job)
+            else:
+                self._process(job)
+
+    @staticmethod
+    def _run_task(job: Job) -> None:
+        job.state = "running"
+        try:
+            assert job.task is not None  # noqa: S101
+            job.error = None
+            job.result = job.task()
+            job.state = "done"
+        except Exception as exc:
+            log.exception("task failed", extra={"job": job.id})
+            job.state, job.error = "failed", f"internal error: {type(exc).__name__}"
 
     def _process(self, job: Job) -> None:
         job.state = "running"

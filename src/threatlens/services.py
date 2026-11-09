@@ -10,6 +10,7 @@ from collections.abc import Callable
 from threatlens import runtime_settings
 from threatlens.auth.sessions import purge_expired
 from threatlens.config import Settings
+from threatlens.detection.engine import DetectionEngine
 from threatlens.ingest.jobs import IngestWorker
 from threatlens.ingest.pipeline import BatchReport
 from threatlens.ingest.watch import InboxWatcher
@@ -26,6 +27,8 @@ class Services:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._batch_hooks: list[BatchHook] = []
+        self.detection = DetectionEngine(settings)
+        self._batch_hooks.append(self._detect)
         self.worker = IngestWorker(settings, self.default_timezone, self._on_batch)
         self.watcher = InboxWatcher(settings, self.default_timezone, self._on_batch)
         self._stop = threading.Event()
@@ -42,6 +45,34 @@ class Services:
             except Exception:
                 log.exception("batch hook failed", extra={"batch": report.batch_id})
 
+    def _detect(self, report: BatchReport) -> None:
+        """Detection on every newly ingested batch."""
+        if not report.chunks:
+            return
+        conn = connect(self.settings.db_path)
+        try:
+            run = self.detection.run_ranges(conn, report.chunks)
+        finally:
+            conn.close()
+        if run.result.new_alerts or run.errors:
+            log.info(
+                "detection",
+                extra={
+                    "batch": report.batch_id,
+                    "new_alerts": len(run.result.new_alerts),
+                    "events": run.result.events,
+                    "errors": run.errors,
+                },
+            )
+
+    def load_rules(self) -> None:
+        conn = connect(self.settings.db_path)
+        try:
+            self.detection.reload(conn)
+            self.detection.run_tests(conn)
+        finally:
+            conn.close()
+
     def default_timezone(self) -> str:
         conn = connect(self.settings.db_path)
         try:
@@ -50,6 +81,11 @@ class Services:
             conn.close()
 
     def start(self) -> None:
+        self.settings.rules_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            self.load_rules()
+        except Exception:  # a broken rule set must not stop the app from starting
+            log.exception("loading rules failed")
         self.worker.start()
         if self.settings.watch_enabled:
             (self.settings.data_dir / "inbox").mkdir(mode=0o700, exist_ok=True)

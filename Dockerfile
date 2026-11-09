@@ -21,6 +21,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY README.md LICENSE ./
 COPY src ./src
+COPY rules/examples ./rules/examples
+COPY tests/rules ./tests/rules
 RUN uv sync --locked --no-dev --no-editable \
  && find /opt/threatlens -name "*.pyi" -delete \
  && rm -rf /opt/threatlens/lib/python3.13/site-packages/pip* /opt/threatlens/bin/pip*

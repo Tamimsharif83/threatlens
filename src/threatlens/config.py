@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     max_decompressed_mb: Annotated[int, Field(ge=1, le=102_400)] = 10_240
     watch_enabled: bool = Field(default=True, description="Ingest files placed in <data>/inbox.")
     watch_interval_seconds: Annotated[float, Field(ge=0.5, le=3600)] = 5.0
+    rules_dir: Path | None = Field(
+        default=None, description="Your Sigma rules (default <data>/rules)."
+    )
+    builtin_rules: bool = Field(default=True, description="Load the bundled example rules.")
     alert_throttle_minutes: Annotated[int, Field(ge=0, le=10_080)] = 60
     default_timezone: str = "UTC"
     log_level: LogLevel = LogLevel.INFO
@@ -103,6 +107,10 @@ class Settings(BaseSettings):
     @cached_property
     def db_path(self) -> Path:
         return self.data_dir / "threatlens.db"
+
+    @cached_property
+    def rules_path(self) -> Path:
+        return self.rules_dir or self.data_dir / "rules"
 
     @cached_property
     def tmp_dir(self) -> Path:

@@ -5,5 +5,7 @@
 !README.md
 !LICENSE
 !src/
+!rules/examples/
+!tests/rules/
 src/**/__pycache__
 src/**/*.pyc
