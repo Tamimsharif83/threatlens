@@ -111,12 +111,15 @@ def top_values(
     if window is None or not tables:
         return []
     col = quote_ident(field)
+    # Group inside each table first: that reads only the (field, tl_ts) index. Grouping
+    # a UNION of raw values instead would sort every row in a temporary b-tree.
     union = " UNION ALL ".join(
-        f"SELECT {col} AS v FROM {quote_ident(t)} WHERE {TS} >= ? AND {col} IS NOT NULL"
+        f"SELECT {col} AS v, count(*) AS n FROM {quote_ident(t)} "
+        f"WHERE {TS} >= ? AND {col} IS NOT NULL GROUP BY {col}"
         for t in tables
     )
     rows = conn.execute(
-        f"SELECT v, count(*) AS n FROM ({union}) GROUP BY v ORDER BY n DESC LIMIT ?",
+        f"SELECT v, sum(n) AS n FROM ({union}) GROUP BY v ORDER BY n DESC LIMIT ?",
         (*([window[0]] * len(tables)), limit),
     ).fetchall()
     return [(str(r[0]), int(r[1])) for r in rows]

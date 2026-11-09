@@ -177,10 +177,7 @@ class EventStore:
             f"ALTER TABLE {q} ADD COLUMN {quote_ident(name)} {sql_type} COLLATE NOCASE"
         )
         if name in PIVOT_FIELDS:
-            self.conn.execute(
-                f"CREATE INDEX IF NOT EXISTS {quote_ident(f'{table}__{name}')} "
-                f"ON {q} ({quote_ident(name)})"
-            )
+            _create_pivot_index(self.conn, table, name)
         self.conn.execute(
             "INSERT OR IGNORE INTO event_fields (table_name, field, sql_type, first_seen) "
             "VALUES (?, ?, ?, ?)",
@@ -299,3 +296,29 @@ class EventStore:
                 (field_name,),
             )
         ]
+
+
+def _create_pivot_index(conn: sqlite3.Connection, table: str, name: str) -> None:
+    """``(field, tl_ts)``: pivots and "top values in a time window" read the index only."""
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS {quote_ident(f'{table}__{name}')} "
+        f"ON {quote_ident(table)} ({quote_ident(name)}, {TS})"
+    )
+
+
+def upgrade_pivot_indexes(conn: sqlite3.Connection) -> list[str]:
+    """Rebuild pivot indexes made before v1.0 (field only) as ``(field, tl_ts)``.
+
+    Idempotent; returns the indexes it rebuilt. Called once at startup.
+    """
+    rebuilt = []
+    tables = [r[0] for r in conn.execute("SELECT table_name FROM event_tables")]
+    for table in tables:
+        for name in sorted(PIVOT_FIELDS):
+            index = f"{table}__{name}"
+            cols = [r[2] for r in conn.execute(f"PRAGMA index_info({quote_ident(index)})")]
+            if cols == [name]:
+                conn.execute(f"DROP INDEX {quote_ident(index)}")
+                _create_pivot_index(conn, table, name)
+                rebuilt.append(index)
+    return rebuilt
