@@ -1,6 +1,6 @@
 [project]
 name = "threatlens"
-version = "0.5.0"
+version = "0.6.0"
 description = "Lightweight, self-hosted detection & investigation platform (mini-SIEM) built on Sigma rules."
 readme = "README.md"
 license = "Apache-2.0"
@@ -83,7 +83,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "S603", "ANN", "PLR2004", "S608", "PT018", "E501"]
+"tests/**" = ["S101", "S105", "S106", "S603", "ANN", "PLR2004", "S608", "PT018", "E501", "PLR0915"]
 # Event tables are per log source: their names are built from ThreatLens' own catalog and
 # always pass through storage.events.quote_ident(); values are always bound parameters.
 "src/threatlens/storage/events.py" = ["S608"]

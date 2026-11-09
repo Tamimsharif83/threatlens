@@ -220,6 +220,10 @@ def _alert(row: sqlite3.Row) -> AlertRow:
     )
 
 
+def alert_from_row(row: sqlite3.Row) -> AlertRow:
+    return _alert(row)
+
+
 def list_alerts(
     conn: sqlite3.Connection,
     *,
