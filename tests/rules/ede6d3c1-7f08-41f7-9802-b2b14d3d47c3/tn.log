@@ -1,0 +1,3 @@
+Jan  5 10:00:00 bastion usermod[2210]: add 'alice' to group 'docker'
+Jan  5 10:00:01 bastion useradd[2213]: new user: name=sudo-helper, UID=1005, GID=1005, home=/home/sudo-helper, shell=/bin/bash
+Jan  5 10:00:02 bastion sudo:   alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/sbin/usermod -aG sudo bob

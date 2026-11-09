@@ -1,0 +1,3 @@
+Jan  5 10:00:00 bastion usermod[2210]: add 'backdoor' to group 'sudo'
+Jan  5 10:00:01 bastion usermod[2211]: add 'eve' to shadow group 'wheel'
+Jan  5 10:00:02 bastion gpasswd[2212]: add 'eve' to group 'admin'
