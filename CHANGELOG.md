@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-09
+
+Phase 7: Windows EVTX.
+
+### Added
+- Windows event logs: `.evtx` files (upload, CLI, watch folder; also inside `.zip`
+  or as `.evtx.gz`) read with the Rust `evtx` library, and `evtx_dump -o jsonl`
+  JSON Lines (auto-detected, parser type `evtx`).
+- One table per channel (`ev_windows_security`, `_system`, `_sysmon`,
+  `_powershell`, `_powershell_classic`, `_application`, other known channels;
+  `ev_windows` for the rest), using pySigma's channel names.
+- Sigma field names (`EventID`, `Channel`, `Computer`, `Provider_Name`, EventData
+  and UserData values, `Data`) plus ECS aliases (`host.name`, `user.name`,
+  `source.ip`, `process.*`, `file.hash.*`, `event.action` ...) for grouping,
+  pivots, IOCs and case timelines.
+- Windows rules compiled with the official pySigma Windows and Sysmon pipelines:
+  `service:` rules per channel, generic categories routed to every channel that
+  can produce them (e.g. `process_creation` on Sysmon 1 and Security 4688); a
+  table a pipeline rejects is skipped ("not applicable") instead of breaking the
+  rule; correlations over Windows rules.
+- Rule tests with `tp.evtx` / `tn.evtx` or Windows records in `.jsonl`.
+- SigmaHQ import now includes Windows rules.
+- Damaged EVTX records and chunks are reported as malformed; the rest is read.
+- Docs: ADR-0010, Windows sections in log formats and writing rules; small
+  MIT/Apache-2.0 EVTX samples as test fixtures.
+
+### Changed
+- Per-table field column cap raised from 400 to 1,000 (Windows logs).
+- Uploads check EVTX by header: `.evtx` names must hold EVTX data and vice versa.
+
 ## [0.7.0] - 2026-11-09
 
 Phase 6: ATT&CK coverage and rule metrics.

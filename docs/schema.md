@@ -44,7 +44,7 @@ A field goes to `tl_extra` (JSON) instead of a column when:
 - it starts with the reserved `tl_` prefix,
 - it differs from an existing column only by letter case (SQLite column names are
   case-insensitive), or
-- the table already has 400 field columns. This stops hostile JSON with random
+- the table already has 1,000 field columns. This stops hostile JSON with random
   keys from creating thousands of columns.
 
 `tl_extra` stays queryable: `json_extract(tl_extra, '$."weird key"')`.

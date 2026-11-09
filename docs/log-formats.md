@@ -10,9 +10,9 @@ needs at least 60% of them to match one format).
 | `ecs-json` | JSON Lines with Elastic Common Schema names | `product: ecs`, `category: <event.category>` | `ev_ecs` |
 | `linux-auth` | `auth.log` / `secure` | `product: linux`, `service: auth` | `ev_linux_auth` |
 | `json` | any JSON Lines, optionally with a field mapping | from the mapping (default `product: json`) | `ev_<product>_<service>_<category>` |
-| *(Phase 7)* `evtx` | Windows EVTX | `product: windows` | `ev_windows_*` |
+| `evtx` | Windows `.evtx` files, or their records as JSON Lines (`evtx_dump -o jsonl`) | `product: windows`, `service: <channel>` | `ev_windows_<service>` |
 
-Files can be plain text, `.gz`, or `.zip` (members may themselves be `.gz`).
+Files can be plain text, `.evtx`, `.gz`, or `.zip` (members may themselves be `.gz`).
 Lines longer than 1 MiB, and lines a parser cannot read, are counted as
 **malformed**. They never stop an ingest, and the first 20 are shown in the
 ingest report.
@@ -144,6 +144,52 @@ keep_unmapped: true            # keep other keys as they are (default true)
 constants:                     # fields added to every event
   event.category: web
 ```
+
+## Windows event logs (`evtx`)
+
+Upload `.evtx` files as they are (also inside `.zip` or as `.evtx.gz`), drop
+them in the watch folder, or use `threatlens ingest Security.evtx`. EVTX is
+recognised by its header, so `--type` is not needed. JSON Lines written by
+`evtx_dump -o jsonl` (one `{"Event": {...}}` record per line) are auto-detected
+too.
+
+The **channel** decides the log source and the table, using the same channel
+names as pySigma's official Windows pipeline:
+
+| Channel | Sigma log source | Table |
+|---|---|---|
+| `Security` | `product: windows, service: security` | `ev_windows_security` |
+| `System` | `service: system` | `ev_windows_system` |
+| `Application` | `service: application` | `ev_windows_application` |
+| `Microsoft-Windows-Sysmon/Operational` | `service: sysmon` | `ev_windows_sysmon` |
+| `Microsoft-Windows-PowerShell/Operational`, `PowerShellCore/Operational` | `service: powershell` | `ev_windows_powershell` |
+| `Windows PowerShell` | `service: powershell-classic` | `ev_windows_powershell_classic` |
+| other channels pySigma knows (TaskScheduler, WMI, Defender ...) | `service: <name>` | `ev_windows_<name>` |
+| anything else | `product: windows` | `ev_windows` |
+
+**Fields** are named the way Sigma's Windows rules expect:
+
+- System values: `EventID` (a number), `Channel`, `Computer`, `Provider_Name`,
+  `Provider_Guid`, `Level`, `Task`, `Opcode`, `Keywords`, `EventRecordID`,
+  `Version`, `ExecutionProcessID`, `ExecutionThreadID`, `UserID`, `ActivityID`.
+- `EventData` and `UserData` values under their own names: `TargetUserName`,
+  `IpAddress`, `LogonType`, `Image`, `CommandLine`, `ParentImage`,
+  `ScriptBlockText`, `ServiceName` ... Unnamed data (classic PowerShell, many
+  System events) is joined into `Data`. If an event reuses a System name in its
+  data, the System value is kept as `System_<name>`.
+- ECS fields added for alert grouping, pivots, IOCs and the case timeline:
+  `host.name` (Computer), `user.name` (TargetUserName, SubjectUserName or User),
+  `source.ip` (IpAddress, SourceIp ...), `destination.ip`, `event.code`,
+  `event.action` (`logon-failed`, `process-created` ...), `process.executable`,
+  `process.name`, `process.command_line`, `file.path`, `file.name`,
+  `file.hash.md5/sha1/sha256` (from Sysmon `Hashes`), `dns.question.name`.
+
+The time is `TimeCreated/SystemTime` (UTC). Records the reader cannot decode (a
+damaged chunk, a cleared log) are counted as malformed, with the reason, and the
+rest of the file is still read. Records are deduplicated like log lines, so
+ingesting a newer copy of the same log only adds the new records. In the watch
+folder an `.evtx` file is read whole once it stops changing, and again when a
+newer copy replaces it.
 
 ## Timezones
 

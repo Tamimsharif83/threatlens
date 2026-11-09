@@ -108,7 +108,7 @@ Compose file or the documented commands stop binding to localhost.
 | Correlation | Sigma v2 `event_count`, `value_count`, `value_sum`, `value_avg`, `temporal`, `temporal_ordered`, across log sources with aliases; one alert per group, linked to child alerts; `generate` honoured | ✅ Phase 4 |
 | Cases & reports | Cases from alerts (bulk or single), merged event-time timeline with annotations, ATT&CK findings, IOCs (auto-extracted + manual, CSV/JSON), notes, severity/status/owner; incident report (summary, scope, timeline, findings, IOCs, impact, root cause, recommendations, appendix) as Markdown and print-ready self-contained HTML | ✅ Phase 5 |
 | Coverage & metrics | ATT&CK v20.0 matrix (bundled, offline) with levels for rules / tested / fired, sub-techniques roll up, stale-tag warnings, Navigator layer export; per-rule events, alerts, verdicts, precision and noisiest rules — see [docs/attack-coverage.md](docs/attack-coverage.md) | ✅ Phase 6 |
-| Windows | EVTX: Security, Sysmon, PowerShell | Phase 7 |
+| Windows | `.evtx` upload/watch/CLI (also in `.zip`/`.gz`, or `evtx_dump` JSON Lines): Security, Sysmon, PowerShell, System and other channels; Sigma field names + ECS aliases; rules compiled with the official pySigma Windows/Sysmon pipelines (SigmaHQ Windows rules work as written); `.evtx` rule-test fixtures | ✅ Phase 7 |
 
 ## Architecture
 
@@ -142,9 +142,9 @@ More detail: [docs/architecture.md](docs/architecture.md) and the
 | ECS JSON Lines | application events with Elastic Common Schema names | [log-formats.md](docs/log-formats.md#ecs-json-lines-ecs-json) |
 | Linux auth | `auth.log`, `secure`: sshd, sudo, su, PAM, useradd/usermod, cron | [log-formats.md](docs/log-formats.md#linux-auth-linux-auth) |
 | Any JSON Lines | with an optional [field mapping](examples/mappings/) | [log-formats.md](docs/log-formats.md#generic-json-lines-json-and-field-mappings) |
-| Windows EVTX | Security, Sysmon, PowerShell, System | Phase 7 |
+| Windows EVTX | Security, Sysmon, PowerShell, System (any channel); `.evtx`, inside `.zip`/`.gz`, or `evtx_dump` JSON Lines | [log-formats.md](docs/log-formats.md#windows-event-logs-evtx) |
 
-Plain files, `.gz` and `.zip`. The format is auto-detected or chosen explicitly.
+Plain files, `.evtx`, `.gz` and `.zip`. The format is auto-detected or chosen explicitly.
 How events are stored: [docs/schema.md](docs/schema.md).
 
 ![Ingest page](docs/images/ingest.png)
@@ -227,8 +227,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 4 | Correlation | ✅ done |
 | 5 | Cases & reports | ✅ done |
 | 6 | ATT&CK coverage & metrics | ✅ done |
-| 7 | Windows EVTX | next |
-| 8 | Hardening & v1.0.0 release | |
+| 7 | Windows EVTX | ✅ done |
+| 8 | Hardening & v1.0.0 release | next |
 
 Non-goals for v1: endpoint agents, clustering, machine learning, cloud
 dependencies, replacing an enterprise SIEM.

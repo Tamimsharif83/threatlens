@@ -64,7 +64,7 @@ pipeline for both layouts; both returned identical matches for every rule):
   change in SQLite). A **field catalog** table records each column per log source,
   so the UI and hunt console know what exists.
 - To stop arbitrary JSON keys from creating thousands of columns, each table is
-  capped (default 400 promoted columns). Fields beyond the cap go into a JSON
+  capped (default 1,000 promoted columns; raised from 400 in Phase 7 for Windows logs). Fields beyond the cap go into a JSON
   `overflow` column; they stay searchable, and a rule that needs one gets a
   generated column or view expression.
 - Indexes: `ts`, plus only the columns that pivots and correlations actually use

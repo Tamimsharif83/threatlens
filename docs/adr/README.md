@@ -15,5 +15,6 @@ They are never edited after acceptance — a later ADR supersedes an earlier one
 | [0007](0007-correlation-rules.md) | Correlation rules: compilation, incremental runs, alert merging | Accepted |
 | [0008](0008-cases-and-reports.md) | Cases, timelines, IOCs and report export | Accepted |
 | [0009](0009-attack-coverage-and-metrics.md) | ATT&CK catalogue, coverage matrix and rule metrics | Accepted |
+| [0010](0010-windows-evtx.md) | Windows EVTX: reading, field names, routing with the official pipelines | Accepted |
 
 Template: copy [`template.md`](template.md).

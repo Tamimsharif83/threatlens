@@ -37,7 +37,7 @@ flowchart TB
 | `web` | FastAPI app, security headers, CSRF, templates, static assets | 0 |
 | `cli` | `threatlens` command (serve, healthcheck, user, later ingest/rules/db) | 0 |
 | `ingest` | safe readers (archives, limits), streaming pipeline, upload worker, watch folder | 1 |
-| `parsers` | web access, Linux auth, ECS JSON, generic JSON + mappings; format detection | 1 |
+| `parsers` | web access, Linux auth, ECS JSON, generic JSON + mappings, Windows event records; format detection | 1, 7 |
 | `normalize` | event model, Sigma log sources → tables, value conversion | 1 |
 | `storage` (events, maintenance) | per-log-source event tables, field catalog, retention, stats | 1 |
 | `services` | background threads: ingest worker, inbox watcher, maintenance | 1 |

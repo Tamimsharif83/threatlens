@@ -23,6 +23,8 @@ separated by `---`.
 | `category: webserver` | web access logs (and any mapped JSON source with `category: webserver`) | Sigma names `c-ip`, `cs-method`, `cs-uri-stem`, `cs-uri-query`, `cs-uri`, `sc-status`, `cs-user-agent`, `cs-referer`, `cs-host`, `cs-username`, `cs-bytes`, `sc-bytes`, `time-taken`, `cs-cookie`; or ECS names (`url.path`, `source.ip` …) |
 | `product: linux`, `service: auth` | auth.log / secure | `event.action`, `event.outcome`, `user.name`, `user.target.name`, `source.ip`, `process.name`, `process.command_line`, `group.name`, `message` … ([list](log-formats.md#linux-auth-linux-auth)) |
 | `product: ecs`, `category: <c>` | ECS JSON application events with `event.category = c` | any ECS field present in your events |
+| `product: windows`, `service: <s>` | that Windows channel (`security`, `system`, `sysmon`, `powershell` ...) | Windows names: `EventID`, `Channel`, `TargetUserName`, `IpAddress`, `LogonType`, `Image`, `CommandLine` ... ([list](log-formats.md#windows-event-logs-evtx)) |
+| `product: windows`, `category: <c>` | every channel that can produce the category (see below) | Sysmon names (`Image`, `ParentImage`, `CommandLine`, `TargetObject` ...) |
 | `product: <p>` (`service`, `category`) | JSON sources whose mapping declares that log source | the field names your mapping produces |
 
 **Keywords** (values without a field, e.g. `keywords: ['Failed password']`) are
@@ -61,6 +63,52 @@ falsepositives:
 level: high
 ```
 
+## Windows rules
+
+Windows rules are compiled with pySigma's **official Windows and Sysmon
+pipelines**, so SigmaHQ rules work as written:
+
+- `service: security` (or `system`, `sysmon`, `powershell` ...) runs on that
+  channel's table, with a `Channel = ...` condition.
+- A generic `category` runs on every channel that can produce it:
+  `process_creation` on Sysmon (EventID 1) **and** on Security (EventID 4688,
+  with `Image` → `NewProcessName`, `ParentImage` → `ParentProcessName`);
+  `network_connection`, `file_event`, `image_load`, `registry_*`, `dns_query`
+  ... on Sysmon; `registry_*` also on Security 4657; `ps_script` (4104) and
+  `ps_module` (4103) on PowerShell/Operational; `ps_classic_*` on Windows
+  PowerShell.
+- When a pipeline rejects a rule for one channel (for example a Sysmon-only
+  field on Security 4657), the rule still runs on the others. The rule page
+  shows the SQL per table, and "not applicable" for the rejected one.
+
+```yaml
+title: Failed Network Logon
+id: 0c7a3f5e-2b8d-4e61-9f1a-7d3c2b9e8a41
+status: experimental
+description: A failed network logon (4625, logon type 3). Correlate it to find brute force.
+references:
+  - https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+author: Your Name
+date: 2026-11-09
+tags:
+  - attack.credential-access
+  - attack.t1110.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+    LogonType: 3
+  condition: selection
+falsepositives:
+  - A service with an expired password
+level: low
+```
+
+Fixtures for Windows rules can be `tp.evtx` / `tn.evtx` files, or `tp.jsonl`
+with records as `evtx_dump -o jsonl` writes them (see below).
+
 ## Required metadata (lint)
 
 `threatlens rules lint` enforces, for every rule: a UUID `id`, `title`,
@@ -84,6 +132,11 @@ Create a folder named after the rule id, next to your rules:
   rule needs are extracted.
 - `*.jsonl` files hold **events** as JSON objects with the stored field names
   (ECS), e.g. `{"event": {"category": "file", "action": "file-upload"}, "file": {"name": "x.php"}}`.
+  A line holding a Windows record (`{"Event": {"System": ..., "EventData": ...}}`,
+  as `evtx_dump -o jsonl` writes it) is parsed like an EVTX record instead.
+- `*.evtx` files are Windows event logs: every record of `tp.evtx` must match,
+  none of `tn.evtx`. Export a few events from Event Viewer (*Save Selected
+  Events...*) to make one.
 
 Run them:
 
