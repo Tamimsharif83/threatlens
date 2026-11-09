@@ -129,7 +129,13 @@ def reset_password(username: str) -> None:
     help="Field-mapping YAML for --type json.",
 )
 @click.option("--recursive/--no-recursive", default=True, show_default=True)
-def ingest(  # noqa: PLR0912 - CLI option handling
+@click.option(
+    "--detect/--no-detect",
+    default=True,
+    show_default=True,
+    help="Run enabled Sigma rules on the new events.",
+)
+def ingest(  # noqa: PLR0912, PLR0915 - CLI option handling
     paths: tuple[Path, ...],
     parser_type: str,
     timezone: str | None,
@@ -137,6 +143,7 @@ def ingest(  # noqa: PLR0912 - CLI option handling
     web_format: str | None,
     mapping: Path | None,
     recursive: bool,
+    detect: bool,
 ) -> None:
     """Ingest log files, archives (.gz, .zip) or directories."""
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # noqa: PLC0415
@@ -179,6 +186,12 @@ def ingest(  # noqa: PLR0912 - CLI option handling
     init_db(settings.db_path)
     conn = connect(settings.db_path)
     failed = 0
+    engine = None
+    if detect:
+        from threatlens.detection.engine import DetectionEngine  # noqa: PLC0415
+
+        engine = DetectionEngine(settings)
+        engine.reload(conn, "cli")
     try:
         default_tz = runtime_settings.default_timezone(conn, settings)
         opts = IngestOptions(
@@ -212,9 +225,164 @@ def ingest(  # noqa: PLR0912 - CLI option handling
                         f"     line {sample['record']}: {sample['reason']}: {sample['line'][:120]}"
                     )
                 failed += rep.status != "done"
+                if engine is not None and rep.chunks:
+                    run = engine.run_ranges(conn, rep.chunks)
+                    if run.result.events:
+                        echo(
+                            f"     detection: {run.result.events} matching event(s), "
+                            f"{len(run.result.new_alerts)} new alert(s)"
+                        )
+                    for rule_id, err in run.errors.items():
+                        echo(f"     rule {rule_id}: {err}")
     finally:
         conn.close()
     sys.exit(1 if failed else 0)
+
+
+# ---------------------------------------------------------------- rules
+
+
+@cli.group()
+def rules() -> None:
+    """Sigma rules: lint, test, list, retro-hunt, import."""
+
+
+def _rule_sources(dirs: tuple[Path, ...]) -> list[tuple[Path, str]]:
+    from threatlens.detection.engine import rule_sources  # noqa: PLC0415
+
+    if dirs:
+        return [(d, "user") for d in dirs]
+    return rule_sources(_load_settings())
+
+
+@rules.command("lint")
+@click.option(
+    "--dir",
+    "dirs",
+    multiple=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Rule folder (repeatable). Default: built-in examples + your rules folder.",
+)
+@click.option("--strict", is_flag=True, help="Treat pySigma validator warnings as errors.")
+def rules_lint(dirs: tuple[Path, ...], strict: bool) -> None:
+    """Check rules: valid Sigma, unique ids, required metadata, ATT&CK tags."""
+    from threatlens.detection.loader import lint, load_rules  # noqa: PLC0415
+
+    result = load_rules(_rule_sources(dirs))
+    issues = lint(result)
+    errors = [i for i in issues if strict or not i.message.startswith("warning:")]
+    for i in issues:
+        echo(f"{i.path} [{i.rule_id or '-'}]: {i.message}")
+    echo(
+        f"{len(result.rules)} rule(s), {len(errors)} error(s), "
+        f"{len(issues) - len(errors)} warning(s)"
+    )
+    sys.exit(1 if errors else 0)
+
+
+@rules.command("test")
+@click.option(
+    "--dir",
+    "dirs",
+    multiple=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Rule folder (repeatable). Default: built-in examples + your rules folder.",
+)
+@click.option(
+    "--tests",
+    "test_dirs",
+    multiple=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Fixture folder with <rule-id>/tp.* and tn.* (repeatable).",
+)
+@click.option("--require-fixtures", is_flag=True, help="Fail for detection rules without fixtures.")
+def rules_test(dirs: tuple[Path, ...], test_dirs: tuple[Path, ...], require_fixtures: bool) -> None:
+    """Run each rule's true-positive / true-negative fixtures."""
+    from threatlens.detection.engine import rule_test_dirs  # noqa: PLC0415
+    from threatlens.detection.loader import load_rules  # noqa: PLC0415
+    from threatlens.detection.testing import run_rule_test  # noqa: PLC0415
+
+    result = load_rules(_rule_sources(dirs))
+    fixture_dirs = list(test_dirs) or rule_test_dirs(_load_settings())
+    failed = 0
+    for rule in result.rules:
+        res = run_rule_test(rule, fixture_dirs)
+        missing = res.status == "none" and rule.kind == "detection"
+        bad = res.status == "fail" or (require_fixtures and missing)
+        failed += bad
+        label = {"pass": "PASS", "fail": "FAIL"}.get(res.status, "MISS" if bad else "----")
+        detail = f" ({res.tp} tp, {res.tn} tn)" if res.status != "none" else ""
+        echo(f"{label} {rule.title}{detail}")
+        for m in res.messages:
+            echo(f"     {m}")
+    for path, err in result.file_errors.items():
+        echo(f"FAIL {path}: {err}")
+        failed += 1
+    echo(f"{len(result.rules)} rule(s), {failed} failing")
+    sys.exit(1 if failed else 0)
+
+
+@rules.command("list")
+def rules_list() -> None:
+    """List loaded rules with status, tests and hit counts."""
+    from threatlens.detection.engine import DetectionEngine  # noqa: PLC0415
+
+    settings, conn = _open_db()
+    try:
+        DetectionEngine(settings).reload(conn, "cli")
+        rows = conn.execute(
+            "SELECT id, title, enabled, kind, load_error, test_status, hits, alerts FROM rules "
+            "ORDER BY title"
+        ).fetchall()
+    finally:
+        conn.close()
+    for r in rows:
+        state = "on " if r["enabled"] else "off"
+        status = "error" if r["load_error"] else r["kind"]
+        echo(
+            f"{state} {r['id']}  {status:<11} tests={r['test_status'] or '-':<4} "
+            f"hits={r['hits']:<6} alerts={r['alerts']:<5} {r['title']}"
+        )
+
+
+@rules.command("hunt")
+@click.argument("rule_id")
+def rules_hunt(rule_id: str) -> None:
+    """Retro-hunt: run one rule over all stored events."""
+    from threatlens.detection.engine import DetectionEngine  # noqa: PLC0415
+
+    settings, conn = _open_db()
+    try:
+        engine = DetectionEngine(settings)
+        engine.reload(conn, "cli")
+        run = engine.retro_hunt(conn, rule_id)
+    finally:
+        conn.close()
+    for err in run.errors.values():
+        echo(f"error: {err}", err=True)
+    echo(f"{run.result.events} new matching event(s), {len(run.result.new_alerts)} new alert(s)")
+    sys.exit(1 if run.errors else 0)
+
+
+@rules.command("import-sigmahq")
+@click.argument("clone", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def rules_import_sigmahq(clone: Path) -> None:
+    """Copy SigmaHQ rules for supported log sources from a local clone into your rules folder.
+
+    Respect the Detection Rule License (DRL 1.1): keep attribution. ThreatLens itself
+    does not ship SigmaHQ rules.
+    """
+    from threatlens.detection.sigmahq import import_sigmahq  # noqa: PLC0415
+
+    settings = _load_settings()
+    report = import_sigmahq(clone, settings.rules_path / "sigmahq")
+    echo(f"imported {report.imported} rule(s) into {report.target}")
+    for logsource, n in sorted(report.by_logsource.items()):
+        echo(f"  {logsource}: {n}")
+    echo(f"skipped {report.skipped} rule(s) for log sources ThreatLens does not ingest yet")
+    for path, err in report.errors[:20]:
+        echo(f"  error {path}: {err}")
+    echo("Reload rules in the web UI (Rules -> Reload) to activate them.")
 
 
 # ---------------------------------------------------------------- database
