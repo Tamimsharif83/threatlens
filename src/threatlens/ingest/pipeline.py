@@ -8,6 +8,7 @@ crash never leaves events without bookkeeping or vice versa.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import sqlite3
@@ -261,6 +262,24 @@ class BatchWriter:
             if on_commit:
                 on_commit(self.conn)
 
+    def fail_on_storage_error(self, exc: sqlite3.Error) -> BatchReport:
+        """The database refused a write. The chunks already committed are kept."""
+        message = f"storage error: {exc}"
+        if "full" in str(exc):
+            message += " (free space on the data volume, or purge old data, then retry)"
+        log.error("ingest stopped by a storage error", extra={"batch": self.batch_id})
+        for attempt in range(2):
+            try:
+                return self.finish("failed", message)
+            except sqlite3.Error:
+                if attempt == 0:  # moving the WAL into the database file often frees room
+                    with contextlib.suppress(sqlite3.Error):
+                        self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        # Still no room: the status stays 'running' until the next start marks it
+        # interrupted; the job and the log carry the reason meanwhile.
+        self.report.status, self.report.error = "failed", message
+        return self.report
+
     def finish(self, status: str = "done", error: str | None = None) -> BatchReport:
         rep = self.report
         rep.status, rep.error = status, error
@@ -353,6 +372,8 @@ def ingest_stream(
         run_chunks(writer, _chain(sample, lines), parser, ctx, progress=progress)
     except READ_ERRORS as exc:  # e.g. a zip bomb detected halfway through
         return writer.finish("failed", str(exc))
+    except sqlite3.Error as exc:  # e.g. the data volume is full
+        return writer.fail_on_storage_error(exc)
     return writer.finish()
 
 
@@ -409,3 +430,46 @@ def _failed_batch(
     samples = [_sample(r, line, "format not recognised") for r, line in sample[:5]]
     writer.write_chunk([], len(sample), samples, 0)
     return writer.finish("failed", error)
+
+
+# ---------------------------------------------------------------- crash recovery
+
+INTERRUPTED = (
+    "interrupted: ThreatLens stopped during this ingest; the events stored before the "
+    "stop are kept (and checked by the rules)"
+)
+
+
+def mark_interrupted(conn: sqlite3.Connection) -> int:
+    """At startup: batches still 'running' were cut off by a crash or a restart."""
+    cur = conn.execute(
+        "UPDATE ingest_batches SET status = 'failed', finished_at = ?, "
+        "error = coalesce(error, ?) WHERE status = 'running'",
+        (now_ms(), INTERRUPTED),
+    )
+    return cur.rowcount
+
+
+def mark_detection(conn: sqlite3.Connection, batch_id: int, state: str) -> None:
+    conn.execute("UPDATE ingest_batches SET detection = ? WHERE id = ?", (state, batch_id))
+
+
+def pending_detection(
+    conn: sqlite3.Connection, limit: int = -1
+) -> list[tuple[int, list[tuple[str, int, int]]]]:
+    """Finished or failed batches whose stored events the rules have not seen yet."""
+    out: list[tuple[int, list[tuple[str, int, int]]]] = []
+    for (batch_id,) in conn.execute(
+        "SELECT id FROM ingest_batches WHERE detection IS NULL AND status != 'running' "
+        "ORDER BY id LIMIT ?",
+        (limit,),
+    ).fetchall():
+        chunks = [
+            (r[0], r[1], r[2])
+            for r in conn.execute(
+                "SELECT table_name, min_id, max_id FROM ingest_batch_tables WHERE batch_id = ?",
+                (batch_id,),
+            )
+        ]
+        out.append((batch_id, chunks))
+    return out

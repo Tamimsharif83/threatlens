@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import queue
 import secrets
+import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -20,7 +21,7 @@ from typing import Any
 from threatlens.config import Settings
 from threatlens.ingest.files import ingest_path
 from threatlens.ingest.pipeline import BatchReport, IngestOptions
-from threatlens.storage.db import connect
+from threatlens.storage.db import connect, transaction
 from threatlens.timeutil import now_ms
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ class IngestWorker:
         self.default_timezone = default_timezone
         self.on_batch = on_batch
         self.jobs: dict[str, Job] = {}
+        self._unsaved: dict[int, str] = {}  # batch id -> error, for failures not yet saved
         self._queue: queue.Queue[Job | None] = queue.Queue()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -162,9 +164,24 @@ class IngestWorker:
             log.exception("task failed", extra={"job": job.id})
             job.state, job.error = "failed", f"internal error: {type(exc).__name__}"
 
+    def _save_failures(self, conn: sqlite3.Connection) -> None:
+        """Write batch failures that could not be saved when they happened (full disk)."""
+        for batch_id, error in list(self._unsaved.items()):
+            try:
+                with transaction(conn):
+                    conn.execute(
+                        "UPDATE ingest_batches SET status = 'failed', finished_at = ?, "
+                        "error = ? WHERE id = ? AND status = 'running'",
+                        (now_ms(), error, batch_id),
+                    )
+            except sqlite3.Error:
+                return  # still no room; try again with the next job
+            del self._unsaved[batch_id]
+
     def _process(self, job: Job) -> None:
         job.state = "running"
         conn = connect(self.settings.db_path)
+        self._save_failures(conn)
         base = {"lines": 0, "inserted": 0, "duplicates": 0, "malformed": 0}
 
         def progress(rep: BatchReport) -> None:
@@ -184,10 +201,12 @@ class IngestWorker:
                 progress=progress,
             )
             for rep in reports:
+                if rep.status == "failed":
+                    self._unsaved[rep.batch_id] = rep.error or "failed"
                 job.batch_ids.append(rep.batch_id)
                 for key in base:
                     base[key] += getattr(rep, key)
-                if self.on_batch and rep.status == "done":
+                if self.on_batch and rep.chunks:  # also the stored part of a failed batch
                     self.on_batch(rep)
             job.lines, job.inserted = base["lines"], base["inserted"]
             job.duplicates, job.malformed = base["duplicates"], base["malformed"]
@@ -198,6 +217,7 @@ class IngestWorker:
             log.exception("ingest job failed", extra={"job": job.id})
             job.state, job.error = "failed", f"internal error: {type(exc).__name__}"
         finally:
+            self._save_failures(conn)  # a no-op unless a failure was not saved yet
             conn.close()
             if self.settings.delete_uploads:
                 job.path.unlink(missing_ok=True)

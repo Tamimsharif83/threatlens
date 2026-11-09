@@ -22,7 +22,7 @@
       <td>{{ b.source }}</td>
       <td class="mono wrap">{{ b.file_name }}</td>
       <td>{{ b.parser }}<span class="muted small"> · {{ b.origin }}</span></td>
-      <td><span class="badge status-{{ b.status }}">{{ b.status }}</span></td>
+      <td><span class="badge status-{{ b.status }}">{{ b.status }}</span>{% if b.error %}<div class="small muted wrap batch-error">{{ b.error|truncate(110) }}</div>{% endif %}</td>
       <td class="num">{{ b.inserted|num }}</td>
       <td class="num">{{ b.duplicates|num }}</td>
       <td class="num">{% if b.malformed %}<a href="/ingest/batches/{{ b.id }}#malformed">{{ b.malformed|num }}</a>{% else %}0{% endif %}</td>

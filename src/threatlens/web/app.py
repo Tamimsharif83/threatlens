@@ -18,6 +18,7 @@ from threatlens.auth.sessions import purge_expired
 from threatlens.auth.throttle import LoginThrottle
 from threatlens.auth.users import bootstrap_admin
 from threatlens.config import Settings
+from threatlens.ingest.pipeline import mark_interrupted
 from threatlens.services import Services
 from threatlens.storage.db import connect, init_db, transaction
 from threatlens.web.deps import NotAuthenticatedError, PasswordChangeRequiredError
@@ -51,6 +52,9 @@ def prepare_storage(settings: Settings) -> None:
         with transaction(conn):
             bootstrap_admin(conn, settings)
             purge_expired(conn)
+            interrupted = mark_interrupted(conn)
+        if interrupted:
+            log.warning("batches interrupted by the last stop", extra={"batches": interrupted})
     finally:
         conn.close()
 
@@ -149,6 +153,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "error.html",
             {"status_code": exc.status_code, "detail": str(exc.detail)},
             status_code=exc.status_code,
+        )
+
+    @app.exception_handler(OverflowError)
+    async def _overflow(request: Request, exc: OverflowError) -> Response:
+        # An id or number beyond SQLite's 64-bit integers (/alerts/99999999999999999999):
+        # nothing can match it, so it is a bad request, not a server error.
+        return await _http_error(
+            request, StarletteHTTPException(status.HTTP_400_BAD_REQUEST, "number out of range")
         )
 
     return app

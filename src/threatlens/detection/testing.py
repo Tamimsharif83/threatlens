@@ -165,7 +165,7 @@ def _evaluate(
     """
     with tempfile.TemporaryDirectory(prefix="tl-ruletest-") as tmp:
         db_path = Path(tmp) / "test.db"
-        init_db(db_path)
+        init_db(db_path, quiet=True)
         conn = connect(db_path)
         try:
             register_functions(conn)
@@ -272,7 +272,7 @@ def _correlation_rows(compiled: CompiledCorrelation, events: list[Event]) -> int
     """Number of window results the correlation produces over ``events`` alone."""
     with tempfile.TemporaryDirectory(prefix="tl-corrtest-") as tmp:
         db_path = Path(tmp) / "test.db"
-        init_db(db_path)
+        init_db(db_path, quiet=True)
         conn = connect(db_path)
         try:
             register_functions(conn)

@@ -12,7 +12,7 @@ from threatlens.auth.sessions import purge_expired
 from threatlens.config import Settings
 from threatlens.detection.engine import DetectionEngine
 from threatlens.ingest.jobs import IngestWorker
-from threatlens.ingest.pipeline import BatchReport
+from threatlens.ingest.pipeline import BatchReport, mark_detection, pending_detection
 from threatlens.ingest.watch import InboxWatcher
 from threatlens.storage.db import connect, transaction
 from threatlens.storage.maintenance import purge
@@ -52,6 +52,8 @@ class Services:
         conn = connect(self.settings.db_path)
         try:
             run = self.detection.run_ranges(conn, report.chunks)
+            with transaction(conn):
+                mark_detection(conn, report.batch_id, "done")
         finally:
             conn.close()
         if run.result.new_alerts or run.errors:
@@ -64,6 +66,26 @@ class Services:
                     "errors": run.errors,
                 },
             )
+
+    def _catch_up(self) -> str:
+        """Run the rules on batches stored but never checked (crash, restart, old failure)."""
+        conn = connect(self.settings.db_path)
+        try:
+            pending = pending_detection(conn)
+            events = 0
+            for batch_id, chunks in pending:
+                if chunks:
+                    events += self.detection.run_ranges(conn, chunks).result.events
+                with transaction(conn):
+                    mark_detection(conn, batch_id, "done")
+        finally:
+            conn.close()
+        if pending:
+            log.info(
+                "detection catch-up",
+                extra={"batches": len(pending), "matching_events": events},
+            )
+        return f"{len(pending)} batch(es) checked, {events} matching event(s)"
 
     def load_rules(self) -> None:
         conn = connect(self.settings.db_path)
@@ -87,6 +109,13 @@ class Services:
         except Exception:  # a broken rule set must not stop the app from starting
             log.exception("loading rules failed")
         self.worker.start()
+        conn = connect(self.settings.db_path)
+        try:
+            behind = bool(pending_detection(conn, limit=1))
+        finally:
+            conn.close()
+        if behind:  # on the worker: it is the single writer
+            self.worker.submit_task("detection catch-up", self._catch_up)
         if self.settings.watch_enabled:
             (self.settings.data_dir / "inbox").mkdir(mode=0o700, exist_ok=True)
             self.watcher.start()

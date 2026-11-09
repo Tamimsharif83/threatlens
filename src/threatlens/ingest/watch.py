@@ -355,5 +355,8 @@ class InboxWatcher:
         if row is None:
             return None
         with transaction(conn):
-            conn.execute("UPDATE ingest_batches SET status = 'running' WHERE id = ?", (row[0],))
+            conn.execute(
+                "UPDATE ingest_batches SET status = 'running', detection = NULL WHERE id = ?",
+                (row[0],),
+            )
         return int(row[0])

@@ -150,10 +150,10 @@ def ingest(  # noqa: PLR0912, PLR0915 - CLI option handling
 
     from threatlens import runtime_settings  # noqa: PLC0415
     from threatlens.ingest.files import ingest_path  # noqa: PLC0415
-    from threatlens.ingest.pipeline import IngestOptions  # noqa: PLC0415
+    from threatlens.ingest.pipeline import IngestOptions, mark_detection  # noqa: PLC0415
     from threatlens.ingest.readers import allowed_filename  # noqa: PLC0415
     from threatlens.parsers import FieldMapping  # noqa: PLC0415
-    from threatlens.storage.db import connect, init_db  # noqa: PLC0415
+    from threatlens.storage.db import connect, init_db, transaction  # noqa: PLC0415
 
     settings = _load_settings()
     if timezone:
@@ -225,8 +225,13 @@ def ingest(  # noqa: PLR0912, PLR0915 - CLI option handling
                         f"     line {sample['record']}: {sample['reason']}: {sample['line'][:120]}"
                     )
                 failed += rep.status != "done"
-                if engine is not None and rep.chunks:
+                if engine is None:
+                    with transaction(conn):
+                        mark_detection(conn, rep.batch_id, "skipped")
+                elif rep.chunks:
                     run = engine.run_ranges(conn, rep.chunks)
+                    with transaction(conn):
+                        mark_detection(conn, rep.batch_id, "done")
                     if run.result.events:
                         echo(
                             f"     detection: {run.result.events} matching event(s), "

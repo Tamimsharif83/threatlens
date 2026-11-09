@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
 
+from threatlens.storage.events import upgrade_pivot_indexes
+
 log = logging.getLogger(__name__)
 
 _MIGRATION_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
@@ -43,7 +45,10 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     try:
         yield conn
     except BaseException:
-        conn.execute("ROLLBACK")
+        # SQLite may already have rolled back by itself (SQLITE_FULL, SQLITE_IOERR); a
+        # second ROLLBACK would raise and hide the real error.
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
         raise
     conn.execute("COMMIT")
 
@@ -61,8 +66,10 @@ def _migrations() -> list[tuple[int, str, str]]:
     return found
 
 
-def init_db(path: Path) -> None:
-    """Create the database if needed, enable WAL and apply pending migrations."""
+def init_db(path: Path, *, quiet: bool = False) -> None:
+    """Create the database if needed, enable WAL and apply pending migrations.
+
+    ``quiet``: for throwaway databases (rule tests), log migrations at DEBUG."""
     conn = connect(path)
     try:
         # auto_vacuum only takes effect on an empty database, so it must come
@@ -73,11 +80,19 @@ def init_db(path: Path) -> None:
         for version, name, sql in _migrations():
             if version <= current:
                 continue
-            log.info("applying migration", extra={"migration": name})
+            log.log(
+                logging.DEBUG if quiet else logging.INFO,
+                "applying migration",
+                extra={"migration": name},
+            )
             # executescript() commits implicitly, so wrap the script itself.
             conn.executescript(
                 f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;"
             )
+        with transaction(conn):
+            rebuilt = upgrade_pivot_indexes(conn)
+        if rebuilt:
+            log.info("rebuilt pivot indexes as (field, time)", extra={"indexes": len(rebuilt)})
     finally:
         conn.close()
     path.chmod(0o600)

@@ -202,7 +202,12 @@ async def upload(
                 )
                 continue
             dest = worker.new_upload_path()
-            size = await _save_upload(upload_file, dest)
+            try:
+                size = await _save_upload(upload_file, dest)
+            except OSError as exc:  # ENOSPC: the data volume is full
+                dest.unlink(missing_ok=True)
+                errors.append(f"{name}: could not be saved ({exc.strerror or exc})")
+                continue
             try:
                 _check_magic(dest, name)
             except UnsafeInputError as exc:
