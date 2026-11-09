@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{# Self-contained and inert: no scripts, no external resources, even when opened as a file. #}
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Incident report: {{ case.title }}</title>
+<style>
+  :root { --ink: #111827; --muted: #4b5563; --line: #d1d5db; --soft: #f3f4f6; --accent: #0e7490; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); background: #fff; font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 24px 48px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  .muted { color: var(--muted); }
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 16px 0; padding: 12px 16px; background: var(--soft); border-radius: 6px; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  td.nowrap { white-space: nowrap; }
+  code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; word-break: break-word; }
+  .narrative { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); font-style: italic; }
+  .badge { display: inline-block; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+  .sev-critical { background: #fee2e2; border-color: #fca5a5; } .sev-high { background: #ffedd5; border-color: #fdba74; }
+  .sev-medium { background: #fef9c3; border-color: #fde047; } .sev-low { background: #e0f2fe; border-color: #7dd3fc; }
+  .kind-alert td { background: #fff7ed; } .kind-annotation td { background: #ecfeff; }
+  footer { margin-top: 40px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; }
+  @media print {
+    main { padding: 0; max-width: none; }
+    h2 { break-after: avoid; } tr { break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="muted">Incident report · Case #{{ case.id }}</p>
+  <h1>{{ case.title }}</h1>
+  <dl class="meta">
+    <dt>Severity</dt><dd><span class="badge sev-{{ case.severity }}">{{ case.severity }}</span></dd>
+    <dt>Status</dt><dd>{{ case.status }}</dd>
+    <dt>Owner</dt><dd>{{ case.assignee or "—" }}</dd>
+    <dt>Activity window</dt><dd>{{ first_seen|dt }} → {{ last_seen|dt }}</dd>
+    <dt>Alerts</dt><dd>{{ alerts|length }}</dd>
+    <dt>Generated</dt><dd>{{ generated_at|dt }} by ThreatLens {{ version }}</dd>
+  </dl>
+
+  {% for key, num in [("summary", 1), ("scope", 2)] %}
+  <h2>{{ num }}. {{ sections[key] }}</h2>
+  {% if case.sections[key] %}<div class="narrative">{{ case.sections[key] }}</div>{% else %}<p class="empty">Not written yet.</p>{% endif %}
+  {% endfor %}
+
+  <h2>3. Timeline</h2>
+  <p class="muted">All times UTC.{% if timeline_hidden %} {{ timeline_hidden }} more events are in ThreatLens.{% endif %}</p>
+  <table>
+    <thead><tr><th>Time</th><th>Type</th><th>What happened</th></tr></thead>
+    <tbody>
+    {% for e in timeline %}
+      <tr class="kind-{{ e.kind }}">
+        <td class="nowrap">{{ e.ts|dt }}</td>
+        <td>{{ e.kind }}</td>
+        <td>
+          {% if e.kind == "alert" %}<strong>{{ e.title }}</strong> <span class="badge sev-{{ e.alert.level }}">{{ e.alert.level }}</span> {{ e.alert.event_count }} event(s)
+          {% elif e.kind == "annotation" %}{{ e.title }} <span class="muted">— {{ e.author }}</span>
+          {% else %}<span class="muted">{{ e.title }}:</span> <code>{{ e.detail }}</code>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>4. Findings mapped to MITRE ATT&amp;CK</h2>
+  {% for f in findings %}
+    <h3>{{ f.technique }}{% if f.tactics %} <span class="muted">({{ f.tactics|join(", ") }})</span>{% endif %}</h3>
+    <ul>
+    {% for a in f.alerts %}
+      <li><span class="badge sev-{{ a.level }}">{{ a.level }}</span> {{ a.rule_title }}: {{ a.event_count }} event(s), {{ a.first_seen|dt }} → {{ a.last_seen|dt }}{% if a.resolution %}, verdict: {{ a.resolution.replace("_", " ") }}{% endif %}</li>
+    {% endfor %}
+    </ul>
+  {% else %}<p class="empty">No alerts in this case.</p>{% endfor %}
+
+  <h2>5. Indicators of compromise</h2>
+  {% if iocs %}
+  <table>
+    <thead><tr><th>Type</th><th>Value</th><th>Seen</th><th>First seen</th><th>Last seen</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for i in iocs %}
+      <tr><td>{{ i.kind }}</td><td><code>{{ i.value }}</code></td><td>{{ i.occurrences }}</td><td class="nowrap">{{ i.first_seen|dt }}</td><td class="nowrap">{{ i.last_seen|dt }}</td><td>{{ i.note or "" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">No IOCs recorded.</p>{% endif %}
+
+  {% for key, num in [("impact", 6), ("root_cause", 7), ("recommendations", 8)] %}
+  <h2>{{ num }}. {{ sections[key] }}</h2>
+  {% if case.sections[key] %}<div class="narrative">{{ case.sections[key] }}</div>{% else %}<p class="empty">Not written yet.</p>{% endif %}
+  {% endfor %}
+
+  <h2>9. {{ sections.appendix }}</h2>
+  {% if case.sections.appendix %}<div class="narrative">{{ case.sections.appendix }}</div>{% endif %}
+  <h3>Alerts in this case</h3>
+  <table>
+    <thead><tr><th>#</th><th>Level</th><th>Rule</th><th>Events</th><th>First seen</th><th>Last seen</th><th>Verdict</th></tr></thead>
+    <tbody>
+    {% for a in alerts %}
+      <tr><td>{{ a.id }}</td><td>{{ a.level }}</td><td>{{ a.rule_title }}</td><td>{{ a.event_count }}</td><td class="nowrap">{{ a.first_seen|dt }}</td><td class="nowrap">{{ a.last_seen|dt }}</td><td>{{ a.resolution.replace("_", " ") if a.resolution else a.status.replace("_", " ") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if notes %}
+  <h3>Analyst notes</h3>
+  <ul>{% for n in notes %}<li><span class="muted">{{ n.created_at|dt }}, {{ n.author }}:</span> <span class="narrative">{{ n.body }}</span></li>{% endfor %}</ul>
+  {% endif %}
+
+  <footer>Generated by ThreatLens {{ version }}. Times are UTC. Log-derived values are shown verbatim and may contain attacker-controlled text.</footer>
+</main>
+</body>
+</html>

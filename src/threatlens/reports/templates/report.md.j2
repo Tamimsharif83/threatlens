@@ -1,0 +1,92 @@
+# Incident report: {{ case.title|mdtext }}
+
+| | |
+|---|---|
+| Case | #{{ case.id }} |
+| Severity | {{ case.severity }} |
+| Status | {{ case.status }} |
+| Owner | {{ case.assignee|mdtext if case.assignee else "—" }} |
+| Activity window | {{ first_seen|dt }} → {{ last_seen|dt }} |
+| Alerts | {{ alerts|length }} |
+| Report generated | {{ generated_at|dt }} by ThreatLens {{ version }} |
+
+## 1. {{ sections.summary }}
+
+{{ case.sections.summary or "_Not written yet._" }}
+
+## 2. {{ sections.scope }}
+
+{{ case.sections.scope or "_Not written yet._" }}
+
+## 3. Timeline
+
+All times UTC.{% if timeline_hidden %} The first {{ timeline|selectattr("kind", "equalto", "event")|list|length }} events are listed; {{ timeline_hidden }} more are in ThreatLens.{% endif %}
+
+| Time | Type | What happened |
+|---|---|---|
+{% for e in timeline %}
+{% if e.kind == "alert" %}
+| {{ e.ts|dt }} | **alert** | {{ e.alert.level }} — {{ e.title|mdtext }} ({{ e.alert.event_count }} events) |
+{% elif e.kind == "annotation" %}
+| {{ e.ts|dt }} | *note* | {{ e.title|mdtext }} — {{ e.author|mdtext }} |
+{% else %}
+| {{ e.ts|dt }} | event | {{ e.title|mdtext }}: {{ e.detail|code }} |
+{% endif %}
+{% endfor %}
+
+## 4. Findings mapped to MITRE ATT&CK
+
+{% for f in findings %}
+### {{ f.technique }}{% if f.tactics %} ({{ f.tactics|join(", ") }}){% endif %}
+
+{% for a in f.alerts %}
+- {{ a.level }} — {{ a.rule_title|mdtext }}: {{ a.event_count }} event(s), {{ a.first_seen|dt }} → {{ a.last_seen|dt }}{% if a.resolution %}, verdict: {{ a.resolution.replace("_", " ") }}{% endif %}
+
+{% endfor %}
+{% else %}
+_No alerts in this case._
+{% endfor %}
+
+## 5. Indicators of compromise
+
+{% if iocs %}
+| Type | Value | Seen | First seen | Last seen | Note |
+|---|---|---|---|---|---|
+{% for i in iocs %}
+| {{ i.kind }} | {{ i.value|code }} | {{ i.occurrences }} | {{ i.first_seen|dt }} | {{ i.last_seen|dt }} | {{ i.note|mdtext if i.note else "" }} |
+{% endfor %}
+{% else %}
+_No IOCs recorded._
+{% endif %}
+
+## 6. {{ sections.impact }}
+
+{{ case.sections.impact or "_Not written yet._" }}
+
+## 7. {{ sections.root_cause }}
+
+{{ case.sections.root_cause or "_Not written yet._" }}
+
+## 8. {{ sections.recommendations }}
+
+{{ case.sections.recommendations or "_Not written yet._" }}
+
+## 9. {{ sections.appendix }}
+
+{{ case.sections.appendix or "" }}
+
+### Alerts in this case
+
+| # | Level | Rule | Events | First seen | Last seen | Verdict |
+|---|---|---|---|---|---|---|
+{% for a in alerts %}
+| {{ a.id }} | {{ a.level }} | {{ a.rule_title|mdtext }} | {{ a.event_count }} | {{ a.first_seen|dt }} | {{ a.last_seen|dt }} | {{ a.resolution.replace("_", " ") if a.resolution else a.status.replace("_", " ") }} |
+{% endfor %}
+{% if notes %}
+
+### Analyst notes
+
+{% for n in notes %}
+- {{ n.created_at|dt }}, {{ n.author|mdtext }}: {{ n.body|mdtext }}
+{% endfor %}
+{% endif %}
