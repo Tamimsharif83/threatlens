@@ -37,7 +37,7 @@ All times UTC.{% if timeline_hidden %} The first {{ timeline|selectattr("kind", 
 ## 4. Findings mapped to MITRE ATT&CK
 
 {% for f in findings %}
-### {{ f.technique }}{% if f.tactics %} ({{ f.tactics|join(", ") }}){% endif %}
+### {{ f.technique }}{% if f.name %} {{ f.name|mdtext }}{% endif %}{% if f.tactics %} ({{ f.tactics|join(", ") }}){% endif %}
 
 {% for a in f.alerts %}
 - {{ a.level }} — {{ a.rule_title|mdtext }}: {{ a.event_count }} event(s), {{ a.first_seen|dt }} → {{ a.last_seen|dt }}{% if a.resolution %}, verdict: {{ a.resolution.replace("_", " ") }}{% endif %}

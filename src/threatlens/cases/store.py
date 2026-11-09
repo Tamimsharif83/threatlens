@@ -15,6 +15,7 @@ from typing import Any
 from threatlens import audit
 from threatlens.alerts.store import AlertRow, alert_from_row
 from threatlens.alerts.triage import EventView, load_events
+from threatlens.attack.catalog import load as load_catalog
 from threatlens.timeutil import now_ms
 
 SEVERITIES = ("low", "medium", "high", "critical")
@@ -42,22 +43,6 @@ IOC_FIELDS: dict[str, str] = {
     "file.hash.md5": "file_hash",
     "file.name": "file_name",
 }
-TACTICS = (
-    "reconnaissance",
-    "resource-development",
-    "initial-access",
-    "execution",
-    "persistence",
-    "privilege-escalation",
-    "defense-evasion",
-    "credential-access",
-    "discovery",
-    "lateral-movement",
-    "collection",
-    "command-and-control",
-    "exfiltration",
-    "impact",
-)
 _HEX_HASH = re.compile(r"^[0-9a-fA-F]{32}([0-9a-fA-F]{8})?([0-9a-fA-F]{24})?$")
 
 
@@ -530,10 +515,12 @@ def timeline(
 
 def attack_findings(alerts: Sequence[AlertRow]) -> list[dict[str, Any]]:
     """Group the case's alerts by ATT&CK technique tag (``attack.t1190`` ...)."""
+    catalog = load_catalog()
+    tactic_names = catalog.tactic_names()
     by_tech: dict[str, dict[str, Any]] = {}
     for a in alerts:
         tactics = [
-            t.removeprefix("attack.") for t in a.tags if t.removeprefix("attack.") in TACTICS
+            t.removeprefix("attack.") for t in a.tags if t.removeprefix("attack.") in tactic_names
         ]
         techniques = [
             t.removeprefix("attack.").upper()
@@ -541,13 +528,21 @@ def attack_findings(alerts: Sequence[AlertRow]) -> list[dict[str, Any]]:
             if re.match(r"^attack\.t\d{4}(\.\d{3})?$", t)
         ] or ["(untagged)"]
         for tech in techniques:
-            item = by_tech.setdefault(tech, {"technique": tech, "tactics": set(), "alerts": []})
+            item = by_tech.setdefault(
+                tech,
+                {
+                    "technique": tech,
+                    "name": catalog.name(tech) if tech != "(untagged)" else "",
+                    "tactics": set(),
+                    "alerts": [],
+                },
+            )
             item["tactics"].update(tactics)
             item["alerts"].append(a)
     out = []
     for tech in sorted(by_tech):
         item = by_tech[tech]
-        item["tactics"] = sorted(item["tactics"])
+        item["tactics"] = [tactic_names.get(t, t) for t in sorted(item["tactics"])]
         out.append(item)
     return out
 
