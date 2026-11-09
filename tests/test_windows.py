@@ -515,3 +515,47 @@ def test_zip_bomb_like_evtx_in_zip_is_capped(settings: Settings) -> None:
     with closing(connect(settings.db_path)) as conn:
         [rep] = ingest_path(conn, zp, IngestOptions(), default_timezone="UTC", max_bytes=MB)
     assert rep.status == "failed" and "limit" in (rep.error or "")
+
+
+# ---------------------------------------------------------------- flat JSON (OTRF)
+
+OTRF_LINE = {
+    "TimeCreated": "2020-10-19 12:28:44.333",
+    "SourceName": "Microsoft-Windows-Security-Auditing",
+    "EventID": 4625,
+    "Channel": "Security",
+    "Hostname": "WORKSTATION5",
+    "TargetUserName": "pgustavo",
+    "IpAddress": "::ffff:10.0.0.9",
+    "LogonType": "3",
+    "Message": "An account failed to log on.",
+}
+
+
+def test_flat_windows_json_is_read_like_evtx(tmp_path: Path) -> None:
+    ev = WindowsEventParser().parse(json.dumps(OTRF_LINE), ParseContext())
+    assert ev.logsource.table_name == "ev_windows_security"
+    f = ev.fields
+    assert f["EventID"] == 4625 and f["Computer"] == "WORKSTATION5"
+    assert f["Provider_Name"] == "Microsoft-Windows-Security-Auditing"
+    assert f["host.name"] == "WORKSTATION5" and f["user.name"] == "pgustavo"
+    assert f["source.ip"] == "10.0.0.9" and f["event.action"] == "logon-failed"
+    assert "TimeCreated" not in f
+    sysmon = {**OTRF_LINE, "Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": "1"}
+    assert WindowsEventParser().parse(json.dumps(sysmon), ParseContext()).fields["EventID"] == 1
+    for bad in [{**OTRF_LINE, "TimeCreated": None}, {**OTRF_LINE, "TimeCreated": "yesterday"}]:
+        with pytest.raises(ParseError):
+            WindowsEventParser().parse(json.dumps(bad), ParseContext())
+    # auto-detection picks the Windows parser; ECS JSON is still ECS
+    lines = [json.dumps({**OTRF_LINE, "EventRecordID": i}) for i in range(5)]
+    assert detect_parser(lines, ParseContext()).name == "evtx"
+    # a zipped OTRF file goes to the Windows table and Windows rules run on it
+    z = tmp_path / "otrf.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("otrf_2020.json", "\n".join(lines) + "\n")
+    s = Settings(data_dir=tmp_path / "d", watch_enabled=False)  # type: ignore[call-arg]
+    s.ensure_dirs()
+    init_db(s.db_path)
+    with closing(connect(s.db_path)) as conn:
+        [rep] = ingest_path(conn, z, IngestOptions(), default_timezone="UTC", max_bytes=2**20)
+        assert rep.parser == "evtx" and rep.tables == {"ev_windows_security": 5}

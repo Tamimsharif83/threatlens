@@ -75,3 +75,28 @@ def test_audit_roundtrip(conn: sqlite3.Connection) -> None:
     assert [e.action for e in entries] == ["a.two", "a.one"]
     assert entries[1].details == {"k": 1}
     assert entries[1].actor == "alice"
+
+
+def test_pivot_indexes_include_time_and_old_ones_are_upgraded(tmp_path: Path) -> None:
+    from threatlens.normalize.schema import WEBSERVER  # noqa: PLC0415
+    from threatlens.storage.events import EventStore, upgrade_pivot_indexes  # noqa: PLC0415
+
+    path = tmp_path / "t.db"
+    init_db(path)
+    conn = connect(path)
+    with transaction(conn):
+        store = EventStore(conn)
+        table = store.ensure_table(WEBSERVER)
+        store._add_column(table, "source.ip", "TEXT")
+    cols = [r[2] for r in conn.execute(f'PRAGMA index_info("{table}__source.ip")')]
+    assert cols == ["source.ip", "tl_ts"]
+    # a pre-1.0 database: single-column pivot index
+    with transaction(conn):
+        conn.execute(f'DROP INDEX "{table}__source.ip"')
+        conn.execute(f'CREATE INDEX "{table}__source.ip" ON {table} ("source.ip")')
+        assert upgrade_pivot_indexes(conn) == [f"{table}__source.ip"]
+        assert upgrade_pivot_indexes(conn) == []
+    cols = [r[2] for r in conn.execute(f'PRAGMA index_info("{table}__source.ip")')]
+    assert cols == ["source.ip", "tl_ts"]
+    conn.close()
+    init_db(path)  # startup runs the upgrade; idempotent

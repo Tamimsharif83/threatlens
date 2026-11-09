@@ -89,12 +89,24 @@ def test_binary_files_refused(tmp_path: Path) -> None:
     for name, data in [
         ("a.log", b"MZ\x90\x00binary"),
         ("b.log", b"\x7fELF\x02\x01"),
-        ("c.log", b"text\x00with nul"),
+        ("c.log", b"text\x00with nul" * 40),
+        ("u.log", "a UTF-16 log line\n".encode("utf-16") * 20),
         ("d.log", b"ElfFile\x00rest"),
     ]:
         (tmp_path / name).write_bytes(data)
         with pytest.raises(UnsafeInputError):
             consume(tmp_path / name, name)
+
+
+def test_a_few_nul_bytes_do_not_hide_a_log(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """A TLS handshake sent to an HTTP port is logged as raw bytes, NULs included.
+    One such request must not make the whole access log un-ingestable."""
+    good = '192.0.2.1 - - [11/Jul/2018:09:31:57 +0300] "GET / HTTP/1.1" 200 973\n'
+    tls = '192.0.2.9 - - [11/Jul/2018:09:32:02 +0300] "\x16\x03\x01\x02\x00\x01\x00" 400 -\n'
+    p = tmp_path / "access.log"
+    p.write_bytes((good + tls + good.replace("09:31", "09:33")).encode("latin-1"))
+    [rep] = ingest_path(conn, p, IngestOptions(), default_timezone="UTC", max_bytes=2**20)
+    assert rep.status == "done" and rep.inserted == 3
 
 
 def test_zip_slip_and_absolute_paths_refused(tmp_path: Path) -> None:
