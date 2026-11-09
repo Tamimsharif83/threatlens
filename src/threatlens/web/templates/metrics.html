@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block title %}Rule metrics · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Rule metrics</h1>
+  <p class="muted">How each rule performs. <strong>Precision = TP / (TP + FP)</strong>, from the verdicts given when alerts are closed. Benign true positives (authorised activity) are not counted against a rule.</p>
+</div>
+
+<section class="stat-grid" aria-label="Verdict totals">
+  <div class="stat"><span class="stat-label">True positives</span><span class="stat-value">{{ totals.tp|num }}</span></div>
+  <div class="stat"><span class="stat-label">False positives</span><span class="stat-value">{{ totals.fp|num }}</span></div>
+  <div class="stat"><span class="stat-label">Benign true positives</span><span class="stat-value">{{ totals.btp|num }}</span></div>
+  <div class="stat"><span class="stat-label">Overall precision</span><span class="stat-value">{{ "%.0f%%"|format(overall_precision * 100) if overall_precision is not none else "—" }}</span><span class="stat-note">{{ totals.open|num }} alert(s) still open</span></div>
+</section>
+
+{% if noisiest %}
+<section class="panel">
+  <h2>Noisiest rules</h2>
+  <ol class="noisy">
+    {% for m in noisiest %}
+    <li><a href="/rules/{{ m.id }}">{{ m.title }}</a> — {{ m.alerts|num }} alert(s), {{ m.hits|num }} event(s){% if m.precision is not none %}, precision {{ "%.0f%%"|format(m.precision * 100) }}{% endif %}{% if m.fp %} <span class="badge status-failed">{{ m.fp }} FP</span>{% endif %}</li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<section class="panel">
+  <form method="get" action="/metrics" class="filter-bar">
+    <label class="field"><span>Sort by</span>
+      <select name="sort">
+        {% for k, label in [("noise", "events matched"), ("alerts", "alerts"), ("fp", "false positives"), ("precision", "precision (lowest first)"), ("title", "title")] %}
+        <option value="{{ k }}" {% if sort == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost">Apply</button></div>
+  </form>
+  <div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Rule</th><th scope="col">Techniques</th>
+        <th scope="col" class="num">Events</th><th scope="col" class="num">Alerts</th>
+        <th scope="col" class="num">Suppressed</th><th scope="col" class="num">TP</th>
+        <th scope="col" class="num">FP</th><th scope="col" class="num">Benign</th>
+        <th scope="col" class="num">Open</th><th scope="col" class="num">Precision</th>
+        <th scope="col">Last fired</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in metrics %}
+      <tr class="{{ '' if m.enabled else 'row-muted' }}">
+        <td><a href="/rules/{{ m.id }}">{{ m.title }}</a>{% if m.kind == "correlation" %} <span class="badge badge-muted">correlation</span>{% endif %}{% if m.correlation_only %} <span class="badge badge-muted" title="Feeds a correlation rule; does not raise alerts on its own">correlation input</span>{% endif %}{% if not m.enabled %} <span class="badge badge-muted">disabled</span>{% endif %}</td>
+        <td class="mono small">{{ m.techniques|join(", ") }}</td>
+        <td class="num">{{ m.hits|num }}</td>
+        <td class="num">{{ m.alerts|num }}</td>
+        <td class="num">{{ m.suppressed|num }}</td>
+        <td class="num">{{ m.tp|num }}</td>
+        <td class="num">{{ m.fp|num }}</td>
+        <td class="num">{{ m.btp|num }}</td>
+        <td class="num">{{ m.open|num }}</td>
+        <td class="num">{% if m.precision is not none %}<span class="prec {{ 'prec-low' if m.precision < 0.5 else 'prec-ok' }}">{{ "%.0f%%"|format(m.precision * 100) }}</span>{% else %}—{% endif %}</td>
+        <td class="nowrap small">{{ m.last_fired_at|dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

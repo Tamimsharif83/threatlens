@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block title %}ATT&CK coverage · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head panel-head">
+  <div>
+    <h1>ATT&amp;CK coverage</h1>
+    <p class="muted">Enabled rules per technique (sub-technique rules count toward their parent). MITRE ATT&amp;CK Enterprise v{{ cov.catalog.version }}.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn-ghost" href="/coverage{{ '' if only_covered else '?covered=1' }}">{{ "Show all techniques" if only_covered else "Show covered only" }}</a>
+    <a class="btn btn-primary" href="/coverage/navigator.json">Navigator layer (JSON)</a>
+  </div>
+</div>
+
+<section class="stat-grid" aria-label="Coverage figures">
+  <div class="stat"><span class="stat-label">Techniques covered</span><span class="stat-value">{{ cov.covered }} / {{ cov.total }}</span><span class="stat-note">{{ pct }}%</span></div>
+  <div class="stat"><span class="stat-label">Enabled rules</span><span class="stat-value">{{ cov.rule_count }}</span></div>
+  <div class="stat stat-legend">
+    <span class="stat-label">Legend</span>
+    <span class="legend"><span class="cov cov-1">rules</span> <span class="cov cov-2">tested</span> <span class="cov cov-3">tested &amp; fired</span> <span class="cov cov-0">none</span></span>
+  </div>
+</section>
+
+{% if cov.unknown_tags %}
+<div class="alert alert-warn" role="status">
+  Tags not in ATT&amp;CK v{{ cov.catalog.version }} (revoked, deprecated or mistyped):
+  {% for tid, titles in cov.unknown_tags.items() %}<code>{{ tid }}</code> ({{ titles|join(", ") }}) {% endfor %}
+</div>
+{% endif %}
+
+<section class="panel matrix-panel">
+  <div class="matrix" role="table" aria-label="ATT&CK matrix">
+    {% for shortname, name, cells in columns %}
+    <div class="matrix-col" role="rowgroup">
+      <div class="matrix-head" role="columnheader">{{ name }}<span class="muted small">{{ cells|selectattr("rules")|list|length }}/{{ cells|length }}</span></div>
+      {% for c in cells %}
+      <div class="cov cov-{{ c.level }} matrix-cell" role="cell"
+           title="{{ c.technique }} {{ c.name }}&#10;{{ c.enabled }} rule(s), {{ c.tested }} tested, {{ c.fired }} fired{% for r in c.rules %}&#10;• {{ r.title }}{% endfor %}{% if c.sub_covered %}&#10;sub-techniques: {{ c.sub_covered|join(', ') }}{% endif %}">
+        <span class="mono small">{{ c.technique }}</span>
+        <span class="cell-name">{{ c.name }}</span>
+        {% if c.rules %}<span class="cell-count">{{ c.enabled }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<p class="muted small">{{ cov.catalog.attribution }}</p>
+{% endblock %}
