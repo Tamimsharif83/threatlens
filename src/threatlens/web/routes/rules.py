@@ -31,7 +31,8 @@ def _services(request: Request) -> Services:
 def rule_rows(db: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = db.execute(
         "SELECT id, title, kind, origin, path, level, status, enabled, load_error, test_status, "
-        "test_message, hits, alerts, last_fired_at, logsource, tags, warnings FROM rules "
+        "test_message, hits, alerts, last_fired_at, logsource, tags, warnings, "
+        "correlation_only FROM rules "
         "ORDER BY origin DESC, title"
     ).fetchall()
     out = []
@@ -137,7 +138,7 @@ def rule_action(
         services.detection.run_tests(db, rule_id)
         return RedirectResponse(f"/rules/{rule_id}", status.HTTP_303_SEE_OTHER)
     if action == "retro-hunt":
-        if row["kind"] != "detection" or row["load_error"]:
+        if row["kind"] not in ("detection", "correlation") or row["load_error"]:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "this rule cannot run")
         job = services.worker.submit_task(
             f"retro-hunt: {row['title']}", _retro_task(settings, services, rule_id)
@@ -176,7 +177,16 @@ def rule_detail(
     request: Request, rule_id: str, session: SessionDep, db: DbDep, hunt: str | None = None
 ) -> Response:
     row = _rule(db, rule_id)
-    compiled: list[CompiledRule | str] = _services(request).detection.compiled_for(db, rule_id)
+    engine = _services(request).detection
+    compiled: list[CompiledRule | str] = engine.compiled_for(db, rule_id)
+    correlation = engine.compiled_correlation_for(db, rule_id)
+    referenced = []
+    if correlation is not None and not isinstance(correlation, str):
+        marks = ",".join("?" * len(correlation.base_rule_ids))
+        referenced = db.execute(
+            f"SELECT id, title FROM rules WHERE id IN ({marks})",  # noqa: S608 - placeholders only
+            correlation.base_rule_ids,
+        ).fetchall()
     job = _services(request).worker.get(hunt) if hunt else None
     return render(
         request,
@@ -190,6 +200,9 @@ def rule_detail(
             "compiled": [c for c in compiled if isinstance(c, CompiledRule)],
             "compile_errors": [c for c in compiled if isinstance(c, str)],
             "alerts": list_alerts(db, rule_id=rule_id, limit=20),
+            "correlation": correlation if not isinstance(correlation, str) else None,
+            "correlation_error": correlation if isinstance(correlation, str) else None,
+            "referenced": referenced,
             "hunt": job,
         },
     )

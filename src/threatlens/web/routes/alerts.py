@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 from starlette.datastructures import FormData
 
-from threatlens.alerts.store import LEVELS, AlertRow, counts_by_level, get_alert
+from threatlens.alerts.store import LEVELS, AlertRow, counts_by_level, get_alert, linked_alerts
 from threatlens.alerts.triage import (
     RESOLUTIONS,
     STATUSES,
@@ -171,6 +171,12 @@ def alert_detail(
         c for c in services.detection.compiled_for(db, alert.rule_id) if not isinstance(c, str)
     ]
     rule_fields = sorted({f for c in compiled for f in c.fields})
+    corr = services.detection.compiled_correlation_for(db, alert.rule_id)
+    if corr is not None and not isinstance(corr, str):
+        rule_fields = sorted(
+            {f for fs in corr.required_fields.values() for f in fs if not f.startswith("tl_")}
+        )
+    children, parents = linked_alerts(db, alert_id)
     rule = db.execute(
         "SELECT yaml, description, load_error FROM rules WHERE id = ?", (alert.rule_id,)
     ).fetchone()
@@ -203,6 +209,8 @@ def alert_detail(
             "pivots": pivots,
             "tables": sorted({e.table for e in events}),
             "error": error,
+            "children": children,
+            "parents": parents,
         },
     )
 

@@ -9,6 +9,27 @@
 
 {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
 
+{% if a.kind == "correlation" or children or parents %}
+<section class="panel">
+  <h2>Correlation</h2>
+  {% if a.metric %}
+  <dl class="kv">
+    <dt>Type</dt><dd>{{ a.metric.get("type") }}</dd>
+    <dt>Value</dt><dd>{{ a.metric.get("value") }}</dd>
+    <dt>Latest window</dt><dd>{{ a.metric.get("window_start")|dt }} &rarr; {{ a.metric.get("window_end")|dt }}</dd>
+  </dl>
+  {% endif %}
+  {% if children %}
+  <h3>Child alerts (the correlated rules' own alerts)</h3>
+  {% with alerts = children %}{% include "_alert_table.html" %}{% endwith %}
+  {% elif a.kind == "correlation" %}<p class="muted small">The correlated rules do not alert on their own (generate: false); their events are listed below.</p>{% endif %}
+  {% if parents %}
+  <h3>Part of correlation alert(s)</h3>
+  {% with alerts = parents %}{% include "_alert_table.html" %}{% endwith %}
+  {% endif %}
+</section>
+{% endif %}
+
 <div class="grid-2">
   <section class="panel">
     <h2>Triage</h2>

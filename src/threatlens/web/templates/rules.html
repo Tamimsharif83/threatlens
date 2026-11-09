@@ -63,8 +63,9 @@
         <td class="small">{% for k, v in r.logsource.items() %}{{ k }}: {{ v }}<br>{% endfor %}</td>
         <td>
           {% if r.load_error %}<span class="badge status-failed" title="{{ r.load_error }}">error</span>
-          {% elif r.kind == "correlation" %}<span class="badge badge-muted" title="Correlation rules run from Phase 4">correlation</span>
           {% else %}<span class="badge status-done">ready</span>{% endif %}
+          {% if r.kind == "correlation" %}<span class="badge badge-muted">correlation</span>{% endif %}
+          {% if r.correlation_only %}<span class="badge badge-muted" title="Used by a correlation with generate: false, so it does not alert on its own">correlation only</span>{% endif %}
           {% if r.warnings %}<span class="badge status-queued" title="{{ r.warnings|join('; ') }}">{{ r.warnings|length }} warning(s)</span>{% endif %}
         </td>
         <td>

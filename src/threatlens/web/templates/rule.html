@@ -21,7 +21,7 @@
       <h2>Rule</h2>
       <div class="btn-row">
         {% include "_rule_toggle.html" %}
-        {% if r.kind == "detection" and not r.load_error %}
+        {% if not r.load_error %}
         <form method="post" action="/rules/{{ r.id }}/retro-hunt" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="btn btn-ghost btn-sm" title="Run this rule over all stored events">Retro-hunt</button>
@@ -73,6 +73,23 @@
     {% if not compile_errors %}<p class="empty">No event table for this log source yet. The rule runs once matching logs are ingested.</p>{% endif %}
   {% endfor %}
   {% for e in compile_errors %}<div class="alert alert-error">{{ e }}</div>{% endfor %}
+</section>
+{% endif %}
+
+{% if r.kind == "correlation" %}
+<section class="panel">
+  <h2>Correlation</h2>
+  {% if correlation %}
+  <dl class="kv">
+    <dt>Type</dt><dd>{{ correlation.type }}</dd>
+    <dt>Timespan</dt><dd>{{ (correlation.timespan_ms / 1000)|int }} s</dd>
+    <dt>Generate</dt><dd>{{ "yes: the referenced rules also alert on their own" if correlation.generate else "no: only this correlation alerts" }}</dd>
+    <dt>Rules</dt><dd>{% for b in referenced %}<a href="/rules/{{ b.id }}">{{ b.title }}</a><br>{% endfor %}</dd>
+    <dt>Tables</dt><dd class="mono">{{ correlation.source_tables.values()|join(", ") }}</dd>
+  </dl>
+  <h3>Compiled query</h3>
+  <pre class="code">{{ correlation.sql }}</pre>
+  {% elif correlation_error %}<div class="alert alert-error">{{ correlation_error }}</div>{% endif %}
 </section>
 {% endif %}
 

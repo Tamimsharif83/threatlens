@@ -16,9 +16,9 @@
   <tbody>
     {% for a in alerts %}
     <tr>
-      <td>{{ a.id }}</td>
+      <td><a href="/alerts/{{ a.id }}">{{ a.id }}</a></td>
       <td><span class="badge sev-{{ a.level }}">{{ a.level }}</span></td>
-      <td><a href="/rules/{{ a.rule_id }}">{{ a.rule_title }}</a>{% if a.origin == "retro" %} <span class="badge badge-muted">retro-hunt</span>{% endif %}</td>
+      <td><a href="/alerts/{{ a.id }}">{{ a.rule_title }}</a>{% if a.kind == "correlation" %} <span class="badge badge-muted">correlation</span>{% endif %}{% if a.origin == "retro" %} <span class="badge badge-muted">retro-hunt</span>{% endif %}</td>
       <td class="small mono wrap">{% for k, v in a.entities.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
       <td class="num">{{ a.event_count|num }}</td>
       <td class="nowrap small">{{ a.first_seen|dt }}</td>
