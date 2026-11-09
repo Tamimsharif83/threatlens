@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}Rules · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head panel-head">
+  <div>
+    <h1>Rules</h1>
+    <p class="muted">Sigma rules from the bundled examples and from <code>{{ rules_dir }}</code>. Detection runs on every ingested batch.</p>
+  </div>
+  <form method="post" action="/rules/reload" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-primary">Reload rules</button>
+  </form>
+</div>
+
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+<section class="stat-grid" aria-label="Rule figures">
+  <div class="stat"><span class="stat-label">Rules</span><span class="stat-value">{{ summary.total }}</span></div>
+  <div class="stat"><span class="stat-label">Enabled</span><span class="stat-value">{{ summary.enabled }}</span></div>
+  <div class="stat"><span class="stat-label">With errors</span><span class="stat-value">{{ summary.errors }}</span></div>
+  <div class="stat"><span class="stat-label">Failing tests</span><span class="stat-value">{{ summary.failing_tests }}</span></div>
+</section>
+
+{% if file_errors %}
+<section class="panel">
+  <h2>Files that could not be loaded</h2>
+  <table class="table compact">
+    <thead><tr><th scope="col">File</th><th scope="col">Problem</th></tr></thead>
+    <tbody>
+      {% for f in file_errors %}<tr><td class="mono wrap">{{ f.path }}</td><td class="error-text">{{ f.error }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  {% if rules %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Enabled</th>
+        <th scope="col">Rule</th>
+        <th scope="col">Level</th>
+        <th scope="col">Log source</th>
+        <th scope="col">Status</th>
+        <th scope="col">Tests</th>
+        <th scope="col" class="num">Hits</th>
+        <th scope="col" class="num">Alerts</th>
+        <th scope="col">Last fired</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <td>{% include "_rule_toggle.html" %}</td>
+        <td>
+          <a href="/rules/{{ r.id }}">{{ r.title }}</a>
+          <div class="muted small mono wrap">{{ r.path }}</div>
+        </td>
+        <td>{% if r.level %}<span class="badge sev-{{ r.level }}">{{ r.level }}</span>{% endif %}</td>
+        <td class="small">{% for k, v in r.logsource.items() %}{{ k }}: {{ v }}<br>{% endfor %}</td>
+        <td>
+          {% if r.load_error %}<span class="badge status-failed" title="{{ r.load_error }}">error</span>
+          {% elif r.kind == "correlation" %}<span class="badge badge-muted" title="Correlation rules run from Phase 4">correlation</span>
+          {% else %}<span class="badge status-done">ready</span>{% endif %}
+          {% if r.warnings %}<span class="badge status-queued" title="{{ r.warnings|join('; ') }}">{{ r.warnings|length }} warning(s)</span>{% endif %}
+        </td>
+        <td>
+          {% if r.test_status == "pass" %}<span class="badge status-done">pass</span>
+          {% elif r.test_status == "fail" %}<span class="badge status-failed" title="{{ r.test_message or '' }}">fail</span>
+          {% else %}<span class="muted small">none</span>{% endif %}
+        </td>
+        <td class="num">{{ r.hits|num }}</td>
+        <td class="num">{{ r.alerts|num }}</td>
+        <td class="nowrap small">{{ r.last_fired_at|dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No rules loaded. Put Sigma rules (.yml) in <code>{{ rules_dir }}</code> and click <em>Reload rules</em>.</p>
+  {% endif %}
+</section>
+{% endblock %}

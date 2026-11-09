@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from threatlens import stats
+from threatlens.alerts.store import counts_by_level, top_rules
 from threatlens.storage.db import schema_version
 from threatlens.timeutil import now_ms
 from threatlens.web.deps import DbDep, SessionDep
@@ -26,5 +27,7 @@ def overview(request: Request, session: SessionDep, db: DbDep) -> Response:
             "top_ips": stats.top_values(db, "source.ip", 10),
             "top_users": stats.top_values(db, "user.name", 10),
             "batches": stats.recent_batches(db, 8),
+            "alert_counts": counts_by_level(db),
+            "top_rules": top_rules(db, 8),
         },
     )

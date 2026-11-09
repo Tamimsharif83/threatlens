@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block title %}Alerts · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Alerts</h1>
+  <p class="muted">Matches of the same rule for the same source IP / user / host within {{ "the alert throttle window" }} are grouped into one alert. Triage (statuses, assignees, notes, pivots) arrives in Phase 3.</p>
+</div>
+
+<section class="stat-grid" aria-label="Open alerts by severity">
+  {% for lvl, n in counts.items() %}
+  <a class="stat stat-link" href="/alerts?level={{ lvl }}"><span class="stat-label">{{ lvl }}</span><span class="stat-value sev-text-{{ lvl }}">{{ n|num }}</span></a>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <form method="get" action="/alerts" class="form-grid">
+    <label class="field"><span>Status</span>
+      <select name="status_filter">
+        <option value="">any</option>
+        {% for s in ["new", "in_progress", "closed"] %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s.replace("_", " ") }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>Level</span>
+      <select name="level">
+        <option value="">any</option>
+        {% for l in levels %}<option value="{{ l }}" {% if l == level %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost">Filter</button></div>
+  </form>
+  {% include "_alert_table.html" %}
+</section>
+{% endblock %}

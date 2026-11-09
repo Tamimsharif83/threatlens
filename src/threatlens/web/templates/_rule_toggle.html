@@ -1,0 +1,8 @@
+<form method="post" action="/rules/{{ r.id }}/{{ 'disable' if r.enabled else 'enable' }}" class="inline-form"
+      hx-post="/rules/{{ r.id }}/{{ 'disable' if r.enabled else 'enable' }}" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="toggle {{ 'on' if r.enabled else 'off' }}" role="switch"
+          aria-checked="{{ 'true' if r.enabled else 'false' }}" aria-label="{{ 'Disable' if r.enabled else 'Enable' }} rule {{ r.title }}">
+    <span class="toggle-knob"></span>
+  </button>
+</form>

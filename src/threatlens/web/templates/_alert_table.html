@@ -1,0 +1,34 @@
+{% if alerts %}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr>
+      <th scope="col">#</th>
+      <th scope="col">Level</th>
+      <th scope="col">Rule</th>
+      <th scope="col">Entities</th>
+      <th scope="col" class="num">Events</th>
+      <th scope="col">First seen</th>
+      <th scope="col">Last seen</th>
+      <th scope="col">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in alerts %}
+    <tr>
+      <td>{{ a.id }}</td>
+      <td><span class="badge sev-{{ a.level }}">{{ a.level }}</span></td>
+      <td><a href="/rules/{{ a.rule_id }}">{{ a.rule_title }}</a>{% if a.origin == "retro" %} <span class="badge badge-muted">retro-hunt</span>{% endif %}</td>
+      <td class="small mono wrap">{% for k, v in a.entities.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
+      <td class="num">{{ a.event_count|num }}</td>
+      <td class="nowrap small">{{ a.first_seen|dt }}</td>
+      <td class="nowrap small">{{ a.last_seen|dt }}</td>
+      <td><span class="badge badge-muted">{{ a.status.replace("_", " ") }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No alerts.</p>
+{% endif %}

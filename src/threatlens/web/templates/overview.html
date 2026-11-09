@@ -15,11 +15,13 @@
     <span class="stat-label">Sources</span>
     <span class="stat-value">{{ totals.sources|num }}</span>
   </div>
-  <div class="stat">
+  <a class="stat stat-link" href="/alerts?status_filter=new">
     <span class="stat-label">Open alerts</span>
-    <span class="stat-value">0</span>
-    <span class="stat-note">Detection arrives in Phase 2</span>
-  </div>
+    <span class="stat-value">{{ alert_counts.values()|sum|num }}</span>
+    <span class="stat-note">
+      {% for lvl, n in alert_counts.items() %}{% if n %}<span class="sev-text-{{ lvl }}">{{ n }} {{ lvl }}</span> {% endif %}{% endfor %}
+    </span>
+  </a>
   <div class="stat">
     <span class="stat-label">Last ingest</span>
     <span class="stat-value stat-value-sm">{{ totals.last_ingest_at|dt }}</span>
@@ -34,6 +36,36 @@
     {% if not totals.events %}<p class="empty">No events yet. <a href="/ingest">Ingest some logs</a> to get started.</p>{% endif %}
   </div>
 </section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Open alerts by severity</h2>
+    <ul class="sev-bars">
+      {% set max_n = (alert_counts.values()|max) or 1 %}
+      {% for lvl, n in alert_counts.items() %}
+      <li>
+        <a href="/alerts?level={{ lvl }}" class="sev-label">{{ lvl }}</a>
+        <meter class="sev-meter sev-meter-{{ lvl }}" min="0" max="{{ max_n }}" value="{{ n }}" aria-label="{{ lvl }}: {{ n }}"></meter>
+        <span class="num">{{ n|num }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Top rules</h2>
+    {% if top_rules %}
+    <table class="table compact">
+      <thead><tr><th scope="col">Rule</th><th scope="col" class="num">Alerts</th><th scope="col" class="num">Events</th></tr></thead>
+      <tbody>
+        {% for rid, title, n_alerts, n_events in top_rules %}
+        <tr><td><a href="/rules/{{ rid }}">{{ title }}</a></td><td class="num">{{ n_alerts|num }}</td><td class="num">{{ n_events|num }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No rule has fired yet.</p>{% endif %}
+  </section>
+</div>
 
 <div class="grid-2">
   <section class="panel">
