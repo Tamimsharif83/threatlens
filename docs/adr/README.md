@@ -13,5 +13,6 @@ They are never edited after acceptance — a later ADR supersedes an earlier one
 | [0005](0005-detection-engine.md) | Detection engine: rule routing, run-on-ingest, alert grouping | Accepted |
 | [0006](0006-triage-hunt-and-tuning.md) | Triage, the read-only hunt console, and tuning | Accepted |
 | [0007](0007-correlation-rules.md) | Correlation rules: compilation, incremental runs, alert merging | Accepted |
+| [0008](0008-cases-and-reports.md) | Cases, timelines, IOCs and report export | Accepted |
 
 Template: copy [`template.md`](template.md).

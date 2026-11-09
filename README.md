@@ -12,9 +12,9 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.5.0, Phase 4 of 8).** Ingestion, Sigma
-> detection and correlation, the triage workflow, search, a read-only SQL hunt
-> console and tuning work. Cases and reports arrive next — see the [roadmap](#roadmap).
+> **Status: early development (v0.6.0, Phase 5 of 8).** Ingestion, Sigma
+> detection and correlation, triage, hunting, tuning, cases and incident reports
+> work. ATT&CK coverage and rule metrics arrive next — see the [roadmap](#roadmap).
 
 ![ThreatLens overview page](docs/images/overview.png)
 
@@ -106,7 +106,7 @@ Compose file or the documented commands stop binding to localhost.
 | Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint, compiled SQL shown per rule, SigmaHQ import | ✅ Phase 2 |
 | Triage | Alert queue (statuses, verdicts, assignee, notes, bulk actions, keyboard), "why it fired" with highlighted fields, entity pivots ±1 h, field search, read-only SQL hunt console with saved hunts and safe CSV export, Sigma filters + suppressions (reason, author, expiry, hit counts), audit log | ✅ Phase 3 |
 | Correlation | Sigma v2 `event_count`, `value_count`, `value_sum`, `value_avg`, `temporal`, `temporal_ordered`, across log sources with aliases; one alert per group, linked to child alerts; `generate` honoured | ✅ Phase 4 |
-| Cases & reports | Case timeline, IOCs (CSV/JSON), Markdown/HTML incident report | Phase 5 |
+| Cases & reports | Cases from alerts (bulk or single), merged event-time timeline with annotations, ATT&CK findings, IOCs (auto-extracted + manual, CSV/JSON), notes, severity/status/owner; incident report (summary, scope, timeline, findings, IOCs, impact, root cause, recommendations, appendix) as Markdown and print-ready self-contained HTML | ✅ Phase 5 |
 | Coverage | ATT&CK matrix, Navigator layer export, per-rule precision metrics | Phase 6 |
 | Windows | EVTX: Security, Sysmon, PowerShell | Phase 7 |
 
@@ -225,8 +225,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 2 | Detection (Sigma) | ✅ done |
 | 3 | Triage | ✅ done |
 | 4 | Correlation | ✅ done |
-| 5 | Cases & reports | next |
-| 6 | ATT&CK coverage & metrics | |
+| 5 | Cases & reports | ✅ done |
+| 6 | ATT&CK coverage & metrics | next |
 | 7 | Windows EVTX | |
 | 8 | Hardening & v1.0.0 release | |
 

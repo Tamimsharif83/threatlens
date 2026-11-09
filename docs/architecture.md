@@ -47,7 +47,8 @@ flowchart TB
 | `search` | field-filter search; read-only SQL hunt console sandbox | 3 |
 | `export` | formula-safe CSV | 3 |
 | `correlation` | compile correlations with their referenced rules; incremental runs via window views; merge windows into alerts; child links | 4 |
-| `cases`, `reports` | cases, timelines, IOCs, Markdown/HTML export | 5 |
+| `cases` | cases, alert links, notes, annotations, merged timeline, ATT&CK findings, IOC extraction | 5 |
+| `reports` | Markdown and self-contained HTML incident reports | 5 |
 | `attack` | technique catalog, coverage matrix, Navigator export | 6 |
 
 ## Request flow (web)

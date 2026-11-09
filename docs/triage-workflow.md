@@ -11,7 +11,7 @@ flowchart LR
   C --> FP[False positive]
   C --> BTP[Benign true positive]
   FP -.->|tune| T[Sigma filter or suppression]
-  TP -.-> K[Case + report — Phase 5]
+  TP -.-> K[Case + report]
 ```
 
 ## 1. Work the queue (Alerts)
@@ -65,7 +65,7 @@ Closing requires a resolution:
 
 | Resolution | Meaning | Usually followed by |
 |---|---|---|
-| True positive | malicious activity, correctly detected | a case and report (Phase 5) |
+| True positive | malicious activity, correctly detected | a case and report (below) |
 | False positive | the rule fired on something that is not what it looks for | tuning the rule |
 | Benign true positive | the rule was right, but the activity is authorised (your own scanner, a pentest) | a suppression with an expiry |
 
@@ -96,3 +96,19 @@ precision = TP / (TP + FP).
   counts how often it hid a match. Review entries with many hits or no recent hits.
 
 Everything above is in the audit log (**Audit log**, admins).
+
+## 6. Investigate as a case and report
+
+1. In the alert queue, tick the related alerts and choose **Add to case** (new
+   case, or an existing one). From an alert page, use **Cases → Add to case**.
+2. On the case page:
+   - **Timeline:** alerts, their events and your **annotations** in event time.
+     Add an annotation at the moment something important happens.
+   - **IOCs:** **Extract from events**, then add your own (with a note). Export as
+     CSV or JSON.
+   - **Findings:** the case's alerts grouped by ATT&CK technique.
+   - **Report sections:** write the executive summary, scope, impact, root cause,
+     recommendations and appendix.
+3. Export **Report (HTML)** for a print-ready document (print to PDF from the
+   browser) or **Report (Markdown)** for a wiki or ticket. The timeline, findings
+   and IOCs are filled in for you.

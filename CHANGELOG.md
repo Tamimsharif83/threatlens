@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-09
+
+Phase 5: cases and reports.
+
+### Added
+- Cases: create from the alert queue (bulk) or an alert page, or empty; add to an
+  existing case; title, description, severity, status (open, investigating,
+  contained, closed), owner, notes; everything audited.
+- Case timeline in event time merging alerts, their events and analyst annotations.
+- ATT&CK findings: case alerts grouped by technique with tactics.
+- IOCs: extracted from the case's events (IPs, domains, URLs, user agents, users,
+  file names and hashes) with counts and first/last seen, plus manual IOCs with
+  notes; CSV (formula-safe) and JSON export.
+- Incident report: executive summary, scope, timeline, findings mapped to ATT&CK,
+  IOCs, impact, root cause, recommendations, appendix; analyst-written sections are
+  edited on the case page; exported as Markdown (log values as escaped code spans)
+  and self-contained, print-ready HTML (no scripts, own restrictive CSP).
+- Docs: ADR-0008.
+
 ## [0.5.0] - 2026-11-09
 
 Phase 4: correlation.
@@ -144,7 +163,8 @@ Phase 0: plan and scaffold.
 - CI (lint, types, tests, Docker build, smoke test, Trivy), release workflow
   (multi-arch to GHCR), Dependabot, issue/PR templates, pre-commit hooks.
 
-[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...v0.3.0
