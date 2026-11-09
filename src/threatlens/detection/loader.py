@@ -24,6 +24,8 @@ from sigma.rule import SigmaRule
 from sigma.validation import SigmaValidator
 from sigma.validators.core import validators as core_validators
 
+from threatlens.attack.catalog import load as load_catalog
+from threatlens.attack.catalog import techniques_in_tags
 from threatlens.detection.compiler import CompileError, logsource_dict, parse_filter, parse_rule
 
 RULE_SUFFIXES = (".yml", ".yaml")
@@ -271,6 +273,13 @@ def lint(result: LoadResult) -> list[LintIssue]:
         for key in REQUIRED:
             if not raw.get(key):
                 add(f"missing required field '{key}'")
+        catalog = load_catalog()
+        for tid in techniques_in_tags(r.tags):
+            if catalog.technique(tid) is None:
+                add(
+                    f"warning: technique {tid} is not in ATT&CK v{catalog.version} "
+                    "(revoked, deprecated or mistyped)"
+                )
         if r.kind == "detection":
             if r.level and r.level not in LEVELS:
                 add(f"level must be one of {', '.join(LEVELS)}")

@@ -20,6 +20,7 @@ data/
 *.log
 # ...except the small synthetic rule-test fixtures (tp.log / tn.log), which are code.
 !tests/rules/**/*.log
+!src/threatlens/attack/data/
 *.evtx
 *.gz
 *.zip

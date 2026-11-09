@@ -1,1 +1,1 @@
-"""MITRE ATT&CK coverage and Navigator export (Phase 6)."""
+"""MITRE ATT&CK: bundled technique catalogue, coverage matrix, Navigator export."""

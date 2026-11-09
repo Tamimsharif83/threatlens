@@ -98,13 +98,14 @@ def test_env_example_documents_host_port() -> None:
     assert not is_ignored(".env.example")
 
 
-def test_rule_fixtures_are_not_git_ignored() -> None:
-    """Fixtures are .log files; a broad *.log ignore once kept them out of git (CI failed)."""
+def test_shipped_data_files_are_not_git_ignored() -> None:
+    """Broad ignores (*.log, data/) once kept rule fixtures and ATT&CK data out of git."""
     git = shutil.which("git")
     if git is None:
         pytest.skip("git not available")
     fixtures = sorted((ROOT / "tests" / "rules").rglob("*.*"))
-    assert fixtures
+    fixtures += sorted((ROOT / "src" / "threatlens" / "attack" / "data").glob("*.*"))
+    assert len(fixtures) > 2
     result = subprocess.run(
         [git, "check-ignore", *[str(f) for f in fixtures]],
         cwd=ROOT,
@@ -112,4 +113,4 @@ def test_rule_fixtures_are_not_git_ignored() -> None:
         capture_output=True,
         text=True,
     )
-    assert result.stdout.strip() == "", f"git-ignored fixtures:\n{result.stdout}"
+    assert result.stdout.strip() == "", f"git-ignored files:\n{result.stdout}"
