@@ -24,6 +24,7 @@ from threatlens.alerts.store import (
 )
 from threatlens.cli.main import cli
 from threatlens.config import Settings
+from threatlens.correlation.compiler import references
 from threatlens.detection.compiler import (
     CompileError,
     compile_detection,
@@ -45,6 +46,7 @@ EXAMPLES = REPO / "rules" / "examples"
 FIXTURES = REPO / "tests" / "rules"
 SQLI = "3815fe7c-7c88-4597-aa81-98ebaabeeb5f"
 SSH = "d3b91716-cedd-4375-893e-31635e879920"
+BRUTE = "90faa98e-828e-45c8-a4e2-c53f8e9d2b99"
 
 
 def rule_yaml(rule_id: str, logsource: str, detection: str, **extra: str) -> str:
@@ -245,12 +247,18 @@ def test_lint_requires_metadata(tmp_path: Path) -> None:
 
 def test_example_rules_lint_clean_and_tests_pass() -> None:
     result = load_rules([(EXAMPLES, "builtin")])
-    assert len(result.rules) == 5
+    assert len(result.rules) == 6  # five files; one holds a base rule + its correlation
     assert lint(result) == []
+    by_ref = {r.id: r for r in result.rules} | {r.name: r for r in result.rules if r.name}
     for rule in result.rules:
-        res = run_rule_test(rule, [FIXTURES])
+        bases = [by_ref[x] for x in references(rule.yaml)] if rule.kind == "correlation" else None
+        res = run_rule_test(rule, [FIXTURES], bases=bases)
         assert res.status == "pass", (rule.title, res.messages)
         assert "[Example]" in rule.title
+    corr = next(r for r in result.rules if r.kind == "correlation")
+    assert run_rule_test(corr, [FIXTURES], bases=[]).messages == [
+        "the rules this correlation references are not loaded"
+    ]
 
 
 def test_rule_test_reports_failures(tmp_path: Path) -> None:
@@ -387,7 +395,7 @@ def test_engine_end_to_end(settings: Settings, tmp_path: Path) -> None:
     engine = DetectionEngine(settings)
     with closing(connect(settings.db_path)) as conn:
         report = engine.reload(conn, "tester")
-        assert report.loaded == 5 and report.errors == 0
+        assert report.loaded == 6 and report.errors == 0
         results = engine.run_tests(conn)
         assert {r.status for r in results} == {"pass"}
         rep = ingest(conn, tmp_path, "access.log", list(web_lines(3000, seed=8)))
@@ -514,7 +522,7 @@ def test_cli_rules_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         ["rules", "test", "--dir", str(EXAMPLES), "--tests", str(FIXTURES), "--require-fixtures"],
     )
     assert test_out.exit_code == 0, test_out.output
-    assert test_out.output.count("PASS") == 5
+    assert test_out.output.count("PASS") == 6
     # default sources: bundled examples (+ empty user folder)
     assert runner.invoke(cli, ["rules", "test"]).exit_code == 0
     logs = tmp_path / "auth.log"
@@ -523,7 +531,9 @@ def test_cli_rules_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert "detection:" in ingest_out.output
     listing = runner.invoke(cli, ["rules", "list"])
     assert SSH in listing.output
-    assert "0 new matching" in runner.invoke(cli, ["rules", "hunt", SSH]).output
+    # The failed-login rule only feeds the brute-force correlation (generate: false), so
+    # ingest did not alert on it alone; the correlation already ran, nothing new to find.
+    assert "0 new matching" in runner.invoke(cli, ["rules", "hunt", BRUTE]).output
     assert runner.invoke(cli, ["rules", "hunt", "missing-id"]).exit_code == 1
     # no fixtures + --require-fixtures fails; lint finds metadata problems
     bad = tmp_path / "bad_rules"

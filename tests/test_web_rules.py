@@ -25,8 +25,8 @@ def post(client: TestClient, path: str, htmx: bool = False):  # type: ignore[no-
 def test_rules_page_lists_examples_with_test_status(authed: TestClient) -> None:
     page = authed.get("/rules")
     assert page.status_code == 200
-    assert len(re.findall(r'<a href="/rules/[0-9a-f-]+">\[Example\]', page.text)) == 5
-    assert page.text.count('class="badge status-done">pass</span>') == 5
+    assert len(re.findall(r'<a href="/rules/[0-9a-f-]+">\[Example\]', page.text)) == 6
+    assert page.text.count('class="badge status-done">pass</span>') == 6
     detail = authed.get(f"/rules/{SQLI}")
     assert "Compiled query" in detail.text
     assert "SELECT * FROM ev_webserver WHERE" in detail.text
@@ -40,7 +40,7 @@ def test_toggle_reload_and_audit(authed: TestClient, db: sqlite3.Connection) -> 
     assert db.execute("SELECT enabled FROM rules WHERE id = ?", (SQLI,)).fetchone()[0] == 0
     assert post(authed, f"/rules/{SQLI}/enable").status_code == 303
     reload = post(authed, "/rules/reload")
-    assert "Reloaded 5 rule(s)" in reload.text
+    assert "Reloaded 6 rule(s)" in reload.text
     assert post(authed, f"/rules/{SQLI}/test").status_code == 303
     assert post(authed, f"/rules/{SQLI}/explode").status_code == 404
     actions = {r[0] for r in db.execute("SELECT action FROM audit_log")}
@@ -96,7 +96,7 @@ def test_xss_in_rules_and_alerts_is_inert(authed: TestClient, settings: Settings
     )
     reload = post(authed, "/rules/reload").text
     assert_inert(reload)
-    assert "Reloaded 6 rule(s): 0 with errors" in reload
+    assert "Reloaded 7 rule(s): 0 with errors" in reload
     line = f'{XSS} - - [05/Jan/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 1 "-" "x"'
     upload(authed, [("x.log", text([line, *list(web_lines(5, seed=1))]))], parser="apache")
     wait_idle(authed)
