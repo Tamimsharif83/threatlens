@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block title %}Cases · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Cases</h1>
+  <p class="muted">An investigation: alerts, a merged timeline, IOCs, notes and an exportable incident report. Create cases here or from the alert queue.</p>
+</div>
+
+{% if message %}<div class="alert alert-error" role="alert">{{ message }}</div>{% endif %}
+
+<section class="panel">
+  <h2>New case</h2>
+  <form method="post" action="/cases" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field field-wide"><span>Title</span><input type="text" name="title" required maxlength="200"></label>
+    <label class="field"><span>Severity</span>
+      <select name="severity">{% for s in severities %}<option value="{{ s }}" {% if s == "medium" %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    </label>
+    <label class="field field-wide"><span>Description <small class="muted">(optional)</small></span><input type="text" name="description" maxlength="2000"></label>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Create case</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <form method="get" action="/cases" class="filter-bar">
+    <label class="field"><span>Status</span>
+      <select name="status_filter">
+        <option value="active" {% if status_filter == "active" %}selected{% endif %}>active (not closed)</option>
+        {% for s in statuses %}<option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        <option value="all" {% if status_filter == "all" %}selected{% endif %}>all</option>
+      </select>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost">Filter</button></div>
+  </form>
+  {% if cases %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Severity</th><th scope="col">Status</th><th scope="col">Owner</th><th scope="col" class="num">Alerts</th><th scope="col" class="num">IOCs</th><th scope="col">Updated</th></tr></thead>
+    <tbody>
+      {% for c in cases %}
+      <tr>
+        <td><a href="/cases/{{ c.id }}">{{ c.id }}</a></td>
+        <td><a href="/cases/{{ c.id }}">{{ c.title }}</a></td>
+        <td><span class="badge sev-{{ c.severity }}">{{ c.severity }}</span></td>
+        <td><span class="badge case-{{ c.status }}">{{ c.status }}</span></td>
+        <td class="small">{{ c.assignee or "—" }}</td>
+        <td class="num">{{ c.n_alerts }}</td>
+        <td class="num">{{ c.n_iocs }}</td>
+        <td class="nowrap small">{{ c.updated_at|dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No cases.</p>{% endif %}
+</section>
+{% endblock %}

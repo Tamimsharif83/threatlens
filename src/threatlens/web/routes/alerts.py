@@ -23,6 +23,7 @@ from threatlens.alerts.triage import (
     notes,
     set_status,
 )
+from threatlens.cases.store import cases_for_alert
 from threatlens.services import Services
 from threatlens.storage.db import transaction
 from threatlens.web.deps import DbDep, SessionDep, client_ip
@@ -44,6 +45,12 @@ def _users(db: sqlite3.Connection) -> list[str]:
     return [
         r[0] for r in db.execute("SELECT username FROM users WHERE disabled = 0 ORDER BY username")
     ]
+
+
+def _open_cases(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute(
+        "SELECT id, title FROM cases WHERE status != 'closed' ORDER BY updated_at DESC LIMIT 50"
+    ).fetchall()
 
 
 def _queue(db: sqlite3.Connection, params: dict[str, str], me: str) -> list[dict[str, Any]]:
@@ -103,6 +110,7 @@ def alerts_page(request: Request, session: SessionDep, db: DbDep) -> Response:
             "params": params,
             "rules": rules.fetchall(),
             "users": _users(db),
+            "open_cases": _open_cases(db),
             "page_size": PAGE,
             "message": request.query_params.get("msg"),
         },
@@ -211,6 +219,8 @@ def alert_detail(
             "error": error,
             "children": children,
             "parents": parents,
+            "cases": cases_for_alert(db, alert_id),
+            "open_cases": _open_cases(db),
         },
     )
 

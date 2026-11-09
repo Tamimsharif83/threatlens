@@ -73,6 +73,11 @@
       {% for u in users %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
     </select>
     <button type="submit" name="action" value="assign" class="btn btn-ghost btn-sm">Assign</button>
+    <select name="case_id" aria-label="Case">
+      <option value="">new case</option>
+      {% for c in open_cases %}<option value="{{ c.id }}">#{{ c.id }} {{ c.title }}</option>{% endfor %}
+    </select>
+    <button type="submit" formaction="/cases" class="btn btn-ghost btn-sm">Add to case</button>
   </div>
 
   {% if alerts %}

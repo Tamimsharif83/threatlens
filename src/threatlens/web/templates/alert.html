@@ -61,6 +61,16 @@
   </section>
 
   <section class="panel">
+    <h2>Cases</h2>
+    {% for c in cases %}<p><a href="/cases/{{ c.id }}">#{{ c.id }} {{ c.title }}</a> <span class="badge case-{{ c.status }}">{{ c.status }}</span></p>{% endfor %}
+    <form method="post" action="/cases" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ids" value="{{ a.id }}">
+      <label class="field"><span>Add to case</span>
+        <select name="case_id"><option value="">new case</option>{% for c in open_cases %}<option value="{{ c.id }}">#{{ c.id }} {{ c.title }}</option>{% endfor %}</select>
+      </label>
+      <div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Add</button></div>
+    </form>
     <h2>Entities &amp; pivots</h2>
     {% if pivots %}
     <table class="table compact">

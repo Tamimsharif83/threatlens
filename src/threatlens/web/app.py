@@ -22,7 +22,7 @@ from threatlens.services import Services
 from threatlens.storage.db import connect, init_db, transaction
 from threatlens.web.deps import NotAuthenticatedError, PasswordChangeRequiredError
 from threatlens.web.limits import BodySizeLimitMiddleware
-from threatlens.web.routes import alerts, api, auth, ingest, pages, rules, search, tuning
+from threatlens.web.routes import alerts, api, auth, cases, ingest, pages, rules, search, tuning
 from threatlens.web.routes import settings as settings_routes
 from threatlens.web.security import SecurityHeadersMiddleware
 from threatlens.web.templating import build_templates, render
@@ -98,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(search.router)
     app.include_router(tuning.router)
+    app.include_router(cases.router)
     app.include_router(settings_routes.router)
     app.include_router(api.router)
     app.include_router(api.docs_router)

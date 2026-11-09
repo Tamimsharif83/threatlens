@@ -1,0 +1,185 @@
+{% extends "layout.html" %}
+{% block title %}Case {{ case.id }} · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head panel-head">
+  <div>
+    <p><a href="/cases">&larr; Cases</a></p>
+    <h1><span class="badge sev-{{ case.severity }}">{{ case.severity }}</span> {{ case.title }}</h1>
+    <p class="muted">Case #{{ case.id }} · <span class="badge case-{{ case.status }}">{{ case.status }}</span> · opened by {{ case.created_by }} {{ case.created_at|dt }}{% if case.closed_at %} · closed {{ case.closed_at|dt }}{% endif %}</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="/cases/{{ case.id }}/report.html">Report (HTML)</a>
+    <a class="btn btn-ghost" href="/cases/{{ case.id }}/report.md">Report (Markdown)</a>
+  </div>
+</div>
+
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Case</h2>
+    <form method="post" action="/cases/{{ case.id }}/update" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field field-wide"><span>Title</span><input type="text" name="title" required maxlength="200" value="{{ case.title }}"></label>
+      <label class="field"><span>Severity</span>
+        <select name="severity">{% for s in severities %}<option value="{{ s }}" {% if s == case.severity %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span>Status</span>
+        <select name="status">{% for s in statuses %}<option value="{{ s }}" {% if s == case.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span>Owner</span>
+        <select name="assignee"><option value="">nobody</option>{% for u in users %}<option value="{{ u }}" {% if u == case.assignee %}selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+      </label>
+      <label class="field field-wide"><span>Description</span><textarea name="description" rows="3" maxlength="20000">{{ case.description or "" }}</textarea></label>
+      <div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Save</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Findings (ATT&amp;CK)</h2>
+    {% for f in findings %}
+      <div class="finding">
+        <strong class="mono">{{ f.technique }}</strong>{% if f.tactics %} <span class="muted small">{{ f.tactics|join(", ") }}</span>{% endif %}
+        <ul class="small">{% for a in f.alerts %}<li><a href="/alerts/{{ a.id }}">{{ a.rule_title }}</a> · {{ a.event_count }} event(s)</li>{% endfor %}</ul>
+      </div>
+    {% else %}<p class="empty">Add alerts to this case (from the alert queue or an alert page).</p>{% endfor %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Alerts <span class="muted small">({{ alerts|length }})</span></h2>
+  {% if alerts %}
+  <div class="table-wrap">
+  <table class="table compact">
+    <thead><tr><th scope="col">#</th><th scope="col">Level</th><th scope="col">Rule</th><th scope="col">Entities</th><th scope="col" class="num">Events</th><th scope="col">First seen</th><th scope="col">Verdict</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for a in alerts %}
+      <tr>
+        <td><a href="/alerts/{{ a.id }}">{{ a.id }}</a></td>
+        <td><span class="badge sev-{{ a.level }}">{{ a.level }}</span></td>
+        <td><a href="/alerts/{{ a.id }}">{{ a.rule_title }}</a></td>
+        <td class="small mono wrap">{% for k, v in a.entities.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
+        <td class="num">{{ a.event_count|num }}</td>
+        <td class="nowrap small">{{ a.first_seen|dt }}</td>
+        <td class="small">{{ a.resolution.replace("_", " ") if a.resolution else a.status.replace("_", " ") }}</td>
+        <td>
+          <form method="post" action="/cases/{{ case.id }}/remove-alert" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="alert_id" value="{{ a.id }}">
+            <button type="submit" class="btn btn-ghost btn-sm">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No alerts yet.</p>{% endif %}
+</section>
+
+<section class="panel" id="timeline">
+  <h2>Timeline <span class="muted small">(event time, UTC)</span></h2>
+  <form method="post" action="/cases/{{ case.id }}/annotate" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field"><span>At (UTC)</span><input type="datetime-local" step="1" name="ts" required></label>
+    <label class="field field-wide"><span>Annotation</span><input type="text" name="body" required maxlength="2000" placeholder="e.g. attacker switches from scanning to credential stuffing"></label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Add annotation</button></div>
+  </form>
+  {% if timeline_hidden %}<p class="muted small">Showing the first events; {{ timeline_hidden|num }} more are referenced by the case's alerts.</p>{% endif %}
+  {% if timeline %}
+  <ol class="case-timeline">
+    {% for e in timeline %}
+    <li class="tl-{{ e.kind }}">
+      <span class="tl-time mono small">{{ e.ts|dt }}</span>
+      {% if e.kind == "alert" %}
+        <span><span class="badge sev-{{ e.alert.level }}">{{ e.alert.level }}</span> <a href="/alerts/{{ e.alert.id }}">{{ e.title }}</a> <span class="muted small">{{ e.detail }}</span></span>
+      {% elif e.kind == "annotation" %}
+        <span><strong>{{ e.title }}</strong> <span class="muted small">— {{ e.author }}</span>
+          <form method="post" action="/cases/{{ case.id }}/delete-annotation" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="annotation_id" value="{{ e.annotation_id }}">
+            <button type="submit" class="btn btn-ghost btn-sm" aria-label="Delete annotation">×</button>
+          </form>
+        </span>
+      {% else %}
+        <span class="small"><span class="badge badge-muted">{{ e.title }}</span> {% if e.event and not e.event.purged %}<a href="/events/{{ e.event.table }}/{{ e.event.id }}" class="mono wrap">{{ e.detail }}</a>{% else %}<span class="muted">{{ e.detail }}</span>{% endif %}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="empty">Nothing on the timeline yet.</p>{% endif %}
+</section>
+
+<section class="panel" id="iocs">
+  <div class="panel-head">
+    <h2>IOCs <span class="muted small">({{ iocs|length }})</span></h2>
+    <div class="btn-row">
+      <form method="post" action="/cases/{{ case.id }}/extract-iocs" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Extract from events</button>
+      </form>
+      <a class="btn btn-ghost btn-sm" href="/cases/{{ case.id }}/iocs.csv">CSV</a>
+      <a class="btn btn-ghost btn-sm" href="/cases/{{ case.id }}/iocs.json">JSON</a>
+    </div>
+  </div>
+  <form method="post" action="/cases/{{ case.id }}/add-ioc" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field"><span>Type</span><select name="kind">{% for k in ioc_kinds %}<option value="{{ k }}">{{ k.replace("_", " ") }}</option>{% endfor %}</select></label>
+    <label class="field"><span>Value</span><input type="text" name="value" required maxlength="2048"></label>
+    <label class="field"><span>Note</span><input type="text" name="note" maxlength="2000"></label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Add IOC</button></div>
+  </form>
+  {% if iocs %}
+  <div class="table-wrap">
+  <table class="table compact">
+    <thead><tr><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Origin</th><th scope="col" class="num">Seen</th><th scope="col">First seen</th><th scope="col">Last seen</th><th scope="col">Note</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for i in iocs %}
+      <tr>
+        <td class="small">{{ i.kind.replace("_", " ") }}</td>
+        <td class="mono small wrap">{{ i.value }}</td>
+        <td class="small">{{ i.origin }}</td>
+        <td class="num">{{ i.occurrences|num }}</td>
+        <td class="nowrap small">{{ i.first_seen|dt }}</td>
+        <td class="nowrap small">{{ i.last_seen|dt }}</td>
+        <td class="small wrap">{{ i.note or "" }}</td>
+        <td>
+          <form method="post" action="/cases/{{ case.id }}/delete-ioc" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ioc_id" value="{{ i.id }}">
+            <button type="submit" class="btn btn-ghost btn-sm">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No IOCs yet. Click "Extract from events" or add them by hand.</p>{% endif %}
+</section>
+
+<section class="panel" id="report">
+  <h2>Report sections</h2>
+  <p class="muted small">Written by you (Markdown is fine). The timeline, ATT&amp;CK findings and IOCs are filled in automatically when you export the report.</p>
+  <form method="post" action="/cases/{{ case.id }}/report" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for key, title in sections.items() %}
+    <label class="field"><span>{{ title }}</span><textarea name="{{ key }}" rows="{{ 5 if key in ('summary', 'recommendations') else 3 }}" maxlength="20000">{{ case.sections[key] or "" }}</textarea></label>
+    {% endfor %}
+    <div><button type="submit" class="btn btn-primary btn-sm">Save report sections</button></div>
+  </form>
+</section>
+
+<section class="panel" id="notes">
+  <h2>Notes</h2>
+  {% for n in notes %}
+  <div class="note"><div class="small muted">{{ n.author }} · {{ n.created_at|dt }}</div><p class="prewrap">{{ n.body }}</p></div>
+  {% else %}<p class="empty">No notes yet.</p>{% endfor %}
+  <form method="post" action="/cases/{{ case.id }}/note" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field"><span>Add a note</span><textarea name="body" rows="3" required maxlength="20000"></textarea></label>
+    <div><button type="submit" class="btn btn-ghost btn-sm">Add note</button></div>
+  </form>
+</section>
+{% endblock %}
