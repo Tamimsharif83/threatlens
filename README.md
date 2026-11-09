@@ -12,9 +12,9 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.3.0, Phase 2 of 8).** Ingestion, Sigma
-> detection on every batch, retro-hunts, rule tests and a first alert list work.
-> The triage workflow arrives next — see the [roadmap](#roadmap).
+> **Status: early development (v0.4.0, Phase 3 of 8).** Ingestion, Sigma
+> detection, the triage workflow, search, a read-only SQL hunt console and tuning
+> work. Correlation rules arrive next — see the [roadmap](#roadmap).
 
 ![ThreatLens overview page](docs/images/overview.png)
 
@@ -104,7 +104,7 @@ Compose file or the documented commands stop binding to localhost.
 | Ingestion | Apache/Nginx (combined, common, custom formats), ECS JSON Lines, Linux auth, generic JSON + field mapping, `.gz`/`.zip`; drag & drop upload, CLI, watch folder with rotation handling; dedup; retention; ingest reports | ✅ Phase 1 |
 | Users | Admin creates analysts in Settings (one-time password, forced change); no passwords in env vars except the first admin | ✅ Phase 1 |
 | Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint, compiled SQL shown per rule, SigmaHQ import | ✅ Phase 2 |
-| Triage | Alert queue, "why it fired", entity pivots, search, read-only SQL hunt console, suppressions | Phase 3 |
+| Triage | Alert queue (statuses, verdicts, assignee, notes, bulk actions, keyboard), "why it fired" with highlighted fields, entity pivots ±1 h, field search, read-only SQL hunt console with saved hunts and safe CSV export, Sigma filters + suppressions (reason, author, expiry, hit counts), audit log | ✅ Phase 3 |
 | Correlation | Sigma v2 `event_count`, `value_count`, `temporal`, `temporal_ordered` | Phase 4 |
 | Cases & reports | Case timeline, IOCs (CSV/JSON), Markdown/HTML incident report | Phase 5 |
 | Coverage | ATT&CK matrix, Navigator layer export, per-rule precision metrics | Phase 6 |
@@ -163,7 +163,7 @@ threatlens rules test      # true/false-positive fixtures, also run on every rel
 threatlens rules hunt <id> # retro-hunt over all stored events
 ```
 
-Guides: [writing rules](docs/writing-rules.md) ·
+Guides: [triage workflow](docs/triage-workflow.md) · [writing rules](docs/writing-rules.md) ·
 [correlation rules](docs/correlation-rules.md) ·
 [how the engine works](docs/adr/0005-detection-engine.md).
 
@@ -187,7 +187,9 @@ All settings are environment variables with the `TL_` prefix.
 | `TL_WATCH_ENABLED` | `true` | Ingest files placed in `/data/inbox` |
 | `TL_WATCH_INTERVAL_SECONDS` | `5` | How often the watch folder is checked |
 | `TL_ALERT_THROTTLE_MINUTES` | `60` | Same rule + same entity (source IP, else user, else host) within this window of event time = one alert |
-| `TL_RULES_DIR` | `/data/rules` | Your Sigma rules |
+| `TL_RULES_DIR` | `/data/rules` | Your Sigma rules (and Sigma filters) |
+| `TL_HUNT_ROW_LIMIT` | `1000` | Maximum rows returned by the hunt console |
+| `TL_HUNT_TIMEOUT_SECONDS` | `10` | Hunt console query time limit |
 | `TL_BUILTIN_RULES` | `true` | Load the bundled `[Example]` rules |
 | `TL_DEFAULT_TIMEZONE` | `UTC` | Timezone for log timestamps without one (changeable in Settings) |
 | `TL_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -220,8 +222,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 0 | Plan & scaffold: ADRs, CI, Docker, login, empty dashboard | ✅ done |
 | 1 | Ingestion & storage | ✅ done |
 | 2 | Detection (Sigma) | ✅ done |
-| 3 | Triage | next |
-| 4 | Correlation | |
+| 3 | Triage | ✅ done |
+| 4 | Correlation | next |
 | 5 | Cases & reports | |
 | 6 | ATT&CK coverage & metrics | |
 | 7 | Windows EVTX | |

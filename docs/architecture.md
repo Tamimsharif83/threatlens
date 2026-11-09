@@ -43,7 +43,9 @@ flowchart TB
 | `services` | background threads: ingest worker, inbox watcher, maintenance | 1 |
 | `stats` | overview aggregates | 1 |
 | `detection` | load/validate/lint Sigma rules, route to tables, compile with pySigma, run per batch and retro-hunt, rule tests, SigmaHQ import | 2 |
-| `alerts` | grouping, throttling, event references (triage state in Phase 3) | 2–3 |
+| `alerts` | grouping, throttling, event references; triage (status, verdict, assignee, notes, history); suppressions | 2–3 |
+| `search` | field-filter search; read-only SQL hunt console sandbox | 3 |
+| `export` | formula-safe CSV | 3 |
 | `correlation` | Sigma v2 correlation rules, parent/child alert links | 4 |
 | `cases`, `reports` | cases, timelines, IOCs, Markdown/HTML export | 5 |
 | `attack` | technique catalog, coverage matrix, Navigator export | 6 |

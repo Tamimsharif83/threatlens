@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+Phase 3: triage.
+
+### Added
+- Alert queue: open/status/level/rule/assignee/entity filters, sort by severity,
+  last/first seen or events; bulk status and assignment; keyboard shortcuts
+  (j/k/x/o, /, ?).
+- Alert detail: why it fired (rule description and YAML, tested fields highlighted
+  in each matched event), matched events (purged ones marked), entity pivots (±1 h
+  search, related alerts, suppress), notes, and a change history from the audit log.
+- Statuses new / in progress / closed; closing requires a verdict (true positive,
+  false positive, benign true positive); assignees.
+- Search: field-filter search with operators and UTC time range; event pages with
+  ±1 h pivots per field and the alerts on that event.
+- Hunt console: read-only SQL (read-only connection + authorizer: no writes, ATTACH,
+  PRAGMA, or users/sessions), time and row limits, saved hunts with description and
+  ATT&CK tag, formula-safe CSV export; every run audited.
+- Tuning: Sigma v2 filters loaded with the rules and applied at compile time (also in
+  rule tests); suppressions with required reason, author, optional expiry, hit
+  counters and per-rule suppressed counts.
+- Audit log page (admin) with filters.
+- `TL_HUNT_ROW_LIMIT`, `TL_HUNT_TIMEOUT_SECONDS`.
+- Docs: ADR-0006, `triage-workflow.md`.
+
+### Fixed
+- Example rule fixtures (`tests/rules/**/*.log`) were excluded by the `*.log` ignore
+  rule and missing from git; a test now guards against ignored fixtures.
+
 ## [0.3.0] - 2026-11-08
 
 Phase 2: detection.
@@ -94,7 +123,8 @@ Phase 0: plan and scaffold.
 - CI (lint, types, tests, Docker build, smoke test, Trivy), release workflow
   (multi-arch to GHCR), Dependabot, issue/PR templates, pre-commit hooks.
 
-[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Tamimsharif83/threatlens/releases/tag/v0.1.0
