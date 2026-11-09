@@ -102,6 +102,11 @@ has `reunion%20selection` in its negatives for exactly that reason.
 **Rule page → Retro-hunt** (or `threatlens rules hunt <rule-id>`) runs the rule
 over everything stored. Events the rule already alerted on are never counted twice.
 
+## Correlation rules
+
+Thresholds, distinct counts and sequences across rules (and log sources):
+see [correlation rules](correlation-rules.md).
+
 ## Alerts
 
 Matches of one rule for the same source IP (or, if absent, user / host) within

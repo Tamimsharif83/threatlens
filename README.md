@@ -12,9 +12,9 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.4.0, Phase 3 of 8).** Ingestion, Sigma
-> detection, the triage workflow, search, a read-only SQL hunt console and tuning
-> work. Correlation rules arrive next — see the [roadmap](#roadmap).
+> **Status: early development (v0.5.0, Phase 4 of 8).** Ingestion, Sigma
+> detection and correlation, the triage workflow, search, a read-only SQL hunt
+> console and tuning work. Cases and reports arrive next — see the [roadmap](#roadmap).
 
 ![ThreatLens overview page](docs/images/overview.png)
 
@@ -105,7 +105,7 @@ Compose file or the documented commands stop binding to localhost.
 | Users | Admin creates analysts in Settings (one-time password, forced change); no passwords in env vars except the first admin | ✅ Phase 1 |
 | Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint, compiled SQL shown per rule, SigmaHQ import | ✅ Phase 2 |
 | Triage | Alert queue (statuses, verdicts, assignee, notes, bulk actions, keyboard), "why it fired" with highlighted fields, entity pivots ±1 h, field search, read-only SQL hunt console with saved hunts and safe CSV export, Sigma filters + suppressions (reason, author, expiry, hit counts), audit log | ✅ Phase 3 |
-| Correlation | Sigma v2 `event_count`, `value_count`, `temporal`, `temporal_ordered` | Phase 4 |
+| Correlation | Sigma v2 `event_count`, `value_count`, `value_sum`, `value_avg`, `temporal`, `temporal_ordered`, across log sources with aliases; one alert per group, linked to child alerts; `generate` honoured | ✅ Phase 4 |
 | Cases & reports | Case timeline, IOCs (CSV/JSON), Markdown/HTML incident report | Phase 5 |
 | Coverage | ATT&CK matrix, Navigator layer export, per-rule precision metrics | Phase 6 |
 | Windows | EVTX: Security, Sysmon, PowerShell | Phase 7 |
@@ -154,8 +154,9 @@ How events are stored: [docs/schema.md](docs/schema.md).
 ThreatLens runs standard [Sigma](https://sigmahq.io/) rules. Put yours in
 `/data/rules` (mount a folder there), with optional test fixtures in
 `/data/rules/tests/<rule-id>/tp.log` (must fire) and `tn.log` (must not), then
-click **Rules → Reload**. ThreatLens ships five `[Example]` rules only; it is a
-platform for **your** detection engineering, not a rule pack.
+click **Rules → Reload**. ThreatLens ships five `[Example]` rule files only (one of
+them pairs a base rule with a brute-force correlation); it is a platform for
+**your** detection engineering, not a rule pack.
 
 ```bash
 threatlens rules lint      # valid Sigma, unique ids, required metadata, ATT&CK tags
@@ -223,8 +224,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 1 | Ingestion & storage | ✅ done |
 | 2 | Detection (Sigma) | ✅ done |
 | 3 | Triage | ✅ done |
-| 4 | Correlation | next |
-| 5 | Cases & reports | |
+| 4 | Correlation | ✅ done |
+| 5 | Cases & reports | next |
 | 6 | ATT&CK coverage & metrics | |
 | 7 | Windows EVTX | |
 | 8 | Hardening & v1.0.0 release | |

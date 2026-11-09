@@ -46,7 +46,7 @@ flowchart TB
 | `alerts` | grouping, throttling, event references; triage (status, verdict, assignee, notes, history); suppressions | 2–3 |
 | `search` | field-filter search; read-only SQL hunt console sandbox | 3 |
 | `export` | formula-safe CSV | 3 |
-| `correlation` | Sigma v2 correlation rules, parent/child alert links | 4 |
+| `correlation` | compile correlations with their referenced rules; incremental runs via window views; merge windows into alerts; child links | 4 |
 | `cases`, `reports` | cases, timelines, IOCs, Markdown/HTML export | 5 |
 | `attack` | technique catalog, coverage matrix, Navigator export | 6 |
 

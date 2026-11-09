@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-09
+
+Phase 4: correlation.
+
+### Added
+- Sigma v2 correlation rules (`event_count`, `value_count`, `value_sum`, `value_avg`,
+  `temporal`, `temporal_ordered`) compiled with the rules they reference, routed per
+  rule to its own event table; aliases and Sigma webserver names supported; works
+  across log sources (e.g. web + auth).
+- Incremental correlation after every batch over the new events' time range widened
+  by the timespan (bursts split across uploads are caught); retro-hunts for
+  correlations.
+- Correlation alerts: one per group, every window's events referenced once, metric
+  (type, value, window) shown, child alerts linked; parents shown on child alerts.
+- `generate` semantics: base rules used only by `generate: false` correlations are
+  marked "correlation only" and do not alert alone; recomputed on enable/disable.
+- Correlation rule tests (tp must fire, tn must not, each in its own scratch database).
+- Example: "[Example] SSH Brute Force From One Address" (in the failed-SSH example
+  file) with near-miss negative fixtures; synthetic auth logs now contain bursts.
+- Docs: ADR-0007, complete `correlation-rules.md`.
+
 ## [0.4.0] - 2026-11-09
 
 Phase 3: triage.
@@ -123,7 +144,8 @@ Phase 0: plan and scaffold.
 - CI (lint, types, tests, Docker build, smoke test, Trivy), release workflow
   (multi-arch to GHCR), Dependabot, issue/PR templates, pre-commit hooks.
 
-[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.1.0...v0.2.0
