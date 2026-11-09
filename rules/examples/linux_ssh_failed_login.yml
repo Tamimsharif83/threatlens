@@ -26,3 +26,32 @@ detection:
 falsepositives:
   - Users mistyping their password
 level: low
+---
+title: "[Example] SSH Brute Force From One Address"
+id: 90faa98e-828e-45c8-a4e2-c53f8e9d2b99
+status: experimental
+description: |
+  EXAMPLE CORRELATION RULE shipped with ThreatLens to demonstrate Sigma v2 correlations.
+  Ten or more failed SSH logins from the same source address within five minutes.
+  Because generate is false, the single failed logins above do not alert on their own.
+references:
+  - https://attack.mitre.org/techniques/T1110/001/
+  - https://sigmahq.io/docs/meta/correlations.html
+author: ThreatLens examples
+date: 2026-11-09
+tags:
+  - attack.credential-access
+  - attack.t1110.001
+correlation:
+  type: event_count
+  rules:
+    - example_ssh_failed_login
+  group-by:
+    - source.ip
+  timespan: 5m
+  condition:
+    gte: 10
+  generate: false
+falsepositives:
+  - A misconfigured script retrying with an old password
+level: high

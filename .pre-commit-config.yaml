@@ -4,6 +4,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        args: [--allow-multiple-documents]  # Sigma files may hold several rules
       - id: check-toml
       - id: end-of-file-fixer
         exclude: ^src/threatlens/web/static/vendor/
