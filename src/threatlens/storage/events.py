@@ -37,7 +37,7 @@ ID, TS, BATCH, RECORD, HASH, RAW, EXTRA = (
     "tl_extra",
 )
 RESERVED_PREFIX = "tl_"
-MAX_FIELD_COLUMNS = 400
+MAX_FIELD_COLUMNS = 1000  # SQLite allows 2000; Windows Security logs need hundreds
 _FIELD_NAME = re.compile(r"^[A-Za-z0-9_@][A-Za-z0-9_@.\-:/]{0,127}$")
 _TABLE_NAME = re.compile(r"^ev_[a-z0-9_]{1,45}$")
 # Fields analysts pivot on: indexed as soon as the column exists.

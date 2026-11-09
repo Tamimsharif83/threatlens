@@ -8,8 +8,9 @@ from threatlens.parsers.base import ParseContext, ParseError, Parser
 from threatlens.parsers.json_lines import EcsJsonParser, FieldMapping, GenericJsonParser
 from threatlens.parsers.linux_auth import LinuxAuthParser
 from threatlens.parsers.web_access import WebAccessParser
+from threatlens.parsers.windows import WindowsEventParser
 
-PARSER_TYPES = ("auto", "apache", "nginx", "ecs-json", "linux-auth", "json")
+PARSER_TYPES = ("auto", "apache", "nginx", "ecs-json", "linux-auth", "evtx", "json")
 SNIFF_THRESHOLD = 0.6
 
 __all__ = [
@@ -37,6 +38,8 @@ def make_parser(
         return EcsJsonParser()
     if kind == "linux-auth":
         return LinuxAuthParser()
+    if kind == "evtx":
+        return WindowsEventParser()
     if kind == "json":
         return GenericJsonParser(mapping)
     raise ValueError(f"unknown parser type {kind!r}; choose from {', '.join(PARSER_TYPES)}")
@@ -56,6 +59,7 @@ def detect_parser(
     if mapping is not None:
         return GenericJsonParser(mapping)
     candidates: list[Parser] = [
+        WindowsEventParser(),  # before the JSON parsers: evtx_dump JSON Lines
         EcsJsonParser(),
         WebAccessParser("apache", fmt=web_format),
         LinuxAuthParser(),

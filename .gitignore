@@ -22,6 +22,7 @@ data/
 !tests/rules/**/*.log
 !src/threatlens/attack/data/
 *.evtx
+!tests/fixtures/evtx/*.evtx
 *.gz
 *.zip
 inbox/

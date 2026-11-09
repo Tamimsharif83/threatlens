@@ -18,7 +18,7 @@ from itertools import islice
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from threatlens.ingest.readers import READ_ERRORS
+from threatlens.ingest.readers import MALFORMED, READ_ERRORS
 from threatlens.normalize.schema import Event
 from threatlens.parsers import (
     FieldMapping,
@@ -290,6 +290,9 @@ def parse_lines(
         if line.startswith(TOO_LONG):
             yield record, None, _sample(record, line[len(TOO_LONG) :], "line too long (> 1 MiB)")
             continue
+        if line.startswith(MALFORMED):  # a record the reader could not decode (EVTX)
+            yield record, None, _sample(record, "", line[len(MALFORMED) :])
+            continue
         try:
             event = parser.parse(line, ctx)
         except ParseError as exc:
@@ -316,6 +319,7 @@ def ingest_stream(
 ) -> BatchReport:
     """Ingest one stream of lines as one batch and return its report."""
     sample = list(islice(lines, SNIFF_LINES))
+    sample_lines = [ln for _, ln in sample if not ln.startswith((TOO_LONG, MALFORMED))]
     source_name = opts.source_name or file_name
     reference = opts.reference_time or datetime.now(UTC)
     # Source timezone (from an earlier ingest) unless overridden for this run.
@@ -332,7 +336,7 @@ def ingest_stream(
     if opts.parser_type == "auto":
         try:
             parser = detect_parser(
-                [line for _, line in sample if not line.startswith(TOO_LONG)],
+                sample_lines,
                 ctx,
                 web_format=opts.web_format,
                 mapping=opts.mapping,

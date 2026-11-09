@@ -1,22 +1,29 @@
 """Safe, streaming access to log files and archives.
 
-Nothing is ever loaded whole into memory, and nothing is extracted to disk:
+Nothing is ever loaded whole into memory, and nothing is extracted by name:
 archive members are streamed straight into the parser, so zip-slip (``../``
 member names) cannot write anywhere. Decompression is capped by total size and
 by compression ratio (zip/gzip bombs), and binary files are refused.
+
+Windows EVTX files are the one binary format accepted. The Rust ``evtx``
+library turns each record into one JSON line (see `EvtxLines`). It needs a
+seekable file, so an EVTX file inside a ``.gz`` or ``.zip`` is first copied,
+within the same size limits, to an anonymous temporary file.
 """
 
 from __future__ import annotations
 
 import gzip
 import io
+import shutil
 import stat
+import tempfile
 import zipfile
 import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Protocol
+from typing import IO, Protocol
 
 GZIP_MAGIC = b"\x1f\x8b"
 ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06")
@@ -28,6 +35,10 @@ MAX_RATIO = 200  # decompressed / compressed, checked once past RATIO_GRACE byte
 RATIO_GRACE = 10 * 1024 * 1024
 MAX_ZIP_MEMBERS = 10_000
 TEXT_EXTENSIONS = {".log", ".txt", ".json", ".jsonl", ".ndjson", ".csv", ".out"}
+EVTX_EXTENSIONS = {".evtx"}
+# Marks a record the reader could not decode; the pipeline reports it as malformed.
+MALFORMED = "\x00MALFORMED\x00"
+MAX_EVTX_ERRORS = 10_000  # consecutive unreadable records before giving up on a file
 ARCHIVE_EXTENSIONS = {".gz", ".zip"}
 # Common log names without an extension (also with rotation suffixes: auth.log.1, secure-20260101)
 BARE_LOG_NAMES = {
@@ -70,6 +81,7 @@ class Member:
 
     name: str  # display name, e.g. "logs.zip!web/access.log"
     stream: LineSource
+    parser: str | None = None  # forced parser type (EVTX records are always "evtx")
 
 
 def allowed_filename(name: str) -> bool:
@@ -85,7 +97,8 @@ def allowed_filename(name: str) -> bool:
     ext = f".{parts[-1]}" if len(parts) > 1 else ""
     if ext == ".gz" and len(parts) > 2:  # access.log.1.gz
         return True
-    return ext in TEXT_EXTENSIONS | ARCHIVE_EXTENSIONS or (ext == "" and base in BARE_LOG_NAMES)
+    allowed = TEXT_EXTENSIONS | ARCHIVE_EXTENSIONS | EVTX_EXTENSIONS
+    return ext in allowed or (ext == "" and base in BARE_LOG_NAMES)
 
 
 class LimitedReader(io.RawIOBase):
@@ -120,12 +133,79 @@ class LimitedReader(io.RawIOBase):
 
 def check_text(head: bytes, name: str) -> None:
     if head.startswith(EVTX_MAGIC):
-        raise UnsafeInputError(f"{name}: Windows EVTX files are not supported yet")
+        raise UnsafeInputError(f"{name}: Windows EVTX data cannot be read as text")
     if head.startswith(BINARY_MAGICS):
         raise UnsafeInputError(f"{name}: binary file (executable or document), not a log")
     sample = head[:SNIFF_BYTES]
     if b"\x00" in sample:
         raise UnsafeInputError(f"{name}: binary data (NUL bytes), not a text log")
+
+
+class EvtxLines:
+    """A `LineSource` over an EVTX file: one compact JSON line per record.
+
+    A record or chunk that cannot be decoded becomes a `MALFORMED` line (reported
+    like a malformed log line) and reading goes on with the next one.
+    """
+
+    def __init__(self, source: Path | IO[bytes], name: str) -> None:
+        from evtx import PyEvtxParser  # noqa: PLC0415 - native module, loaded on demand
+
+        try:
+            parser = PyEvtxParser(
+                str(source) if isinstance(source, Path) else source,
+                number_of_threads=1,  # bounded memory; a chunk at a time
+                indent=False,
+            )
+            self._records = iter(parser.records_json())
+        except (RuntimeError, OSError, ValueError) as exc:
+            raise UnsafeInputError(f"{name}: not a readable EVTX file: {exc}") from exc
+        self._name = name
+        self._buf = b""
+        self._done = False
+
+    def _fill(self) -> None:
+        errors = 0
+        while not self._done:
+            try:
+                record = next(self._records)
+            except StopIteration:
+                self._done = True
+                return
+            except RuntimeError as exc:  # a damaged record or chunk; the next may be fine
+                errors += 1
+                self._buf += (MALFORMED + str(exc).replace("\n", " ")[:300]).encode() + b"\n"
+                if errors >= MAX_EVTX_ERRORS:
+                    self._done = True
+                    return
+                continue
+            if not isinstance(record, dict):
+                continue
+            data = str(record["data"]).replace("\n", " ")  # compact JSON has no newlines
+            self._buf += data.encode("utf-8", "replace") + b"\n"
+            return
+
+    def readline(self, size: int = -1, /) -> bytes:
+        if b"\n" not in self._buf:
+            self._fill()
+        end = self._buf.find(b"\n")
+        end = len(self._buf) if end < 0 else end + 1
+        if 0 <= size < end:
+            end = size
+        line, self._buf = self._buf[:end], self._buf[end:]
+        return line
+
+
+def _spooled_evtx(stream: ByteSource, name: str) -> Member:
+    """Copy a (size-limited) decompressed EVTX stream to an anonymous temp file."""
+    tmp = tempfile.TemporaryFile(prefix="tl-evtx-")  # noqa: SIM115 - closed with the member
+    try:
+        shutil.copyfileobj(stream, tmp, 1024 * 1024)
+        tmp.seek(0)
+        return Member(name, EvtxLines(tmp, name), parser="evtx")
+    except BaseException:
+        tmp.close()
+        raise
 
 
 def _buffered(raw: io.RawIOBase) -> io.BufferedReader:
@@ -153,10 +233,20 @@ def open_members(path: Path, display_name: str, max_bytes: int) -> Iterator[Memb
     if head.startswith(GZIP_MAGIC):
         with gzip.open(path, "rb") as gz:
             limited = LimitedReader(gz, max_bytes, size)
-            yield Member(display_name.removesuffix(".gz") or display_name, _buffered(limited))
+            stream = _buffered(limited)
+            name = display_name.removesuffix(".gz") or display_name
+            if stream.peek(len(EVTX_MAGIC)).startswith(EVTX_MAGIC):
+                yield _spooled_evtx(stream, name)
+            else:
+                yield Member(name, stream)
         return
     if head.startswith(ZIP_MAGIC):
         yield from _zip_members(path, display_name, max_bytes)
+        return
+    if head.startswith(EVTX_MAGIC):
+        if size > max_bytes:
+            raise UnsafeInputError(f"{display_name}: EVTX file is larger than the size limit")
+        yield Member(display_name, EvtxLines(path, display_name), parser="evtx")
         return
     check_text(head, display_name)
     with path.open("rb") as fh:
@@ -191,11 +281,19 @@ def _zip_members(path: Path, display_name: str, max_bytes: int) -> Iterator[Memb
                 if head.startswith(GZIP_MAGIC):  # one level of nesting: logs.zip!a.log.gz
                     inner = gzip.GzipFile(fileobj=stream)
                     nested = LimitedReader(inner, budget, info.compress_size or None)
-                    yield Member(label.removesuffix(".gz"), _buffered(nested))
+                    nested_stream = _buffered(nested)
+                    if nested_stream.peek(len(EVTX_MAGIC)).startswith(EVTX_MAGIC):
+                        yield _spooled_evtx(nested_stream, label.removesuffix(".gz"))
+                    else:
+                        yield Member(label.removesuffix(".gz"), nested_stream)
                     budget -= nested.count
                     continue
                 if head.startswith(ZIP_MAGIC):
                     raise UnsafeInputError(f"{label}: nested zip archives are not supported")
+                if head.startswith(EVTX_MAGIC):
+                    yield _spooled_evtx(stream, label)
+                    budget -= limited.count
+                    continue
                 check_text(head, label)
                 yield Member(label, stream)
                 budget -= limited.count

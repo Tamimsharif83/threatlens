@@ -42,6 +42,7 @@ from threatlens.ingest.pipeline import (
     set_source_parser,
 )
 from threatlens.ingest.readers import (
+    EVTX_MAGIC,
     GZIP_MAGIC,
     READ_ERRORS,
     ZIP_MAGIC,
@@ -255,7 +256,9 @@ class InboxWatcher:
             return []
         with path.open("rb") as fh:
             magic = fh.read(8)
-        if magic.startswith(GZIP_MAGIC) or magic.startswith(ZIP_MAGIC):
+        if magic.startswith((GZIP_MAGIC, *ZIP_MAGIC, EVTX_MAGIC)):
+            # Read whole once the file stops changing. A grown EVTX file changes its
+            # header, counts as rotated and is read again; dedup skips known records.
             return self._ingest_archive(conn, path, st, info)
         if st.offset >= info.st_size:
             return []

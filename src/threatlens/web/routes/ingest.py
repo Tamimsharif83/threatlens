@@ -18,6 +18,7 @@ from threatlens.config import Settings
 from threatlens.ingest.jobs import IngestWorker
 from threatlens.ingest.pipeline import IngestOptions
 from threatlens.ingest.readers import (
+    EVTX_MAGIC,
     GZIP_MAGIC,
     ZIP_MAGIC,
     UnsafeInputError,
@@ -170,6 +171,12 @@ def _check_magic(path: Path, name: str) -> None:
         if not lower.endswith(".zip"):
             raise UnsafeInputError(f"{name}: zip data but the name does not end in .zip")
         return
+    if head.startswith(EVTX_MAGIC):
+        if not lower.endswith(".evtx"):
+            raise UnsafeInputError(f"{name}: EVTX data but the name does not end in .evtx")
+        return
+    if lower.endswith(".evtx"):
+        raise UnsafeInputError(f"{name}: not an EVTX file (no ElfFile header)")
     if lower.endswith((".gz", ".zip")):
         raise UnsafeInputError(f"{name}: not a valid {lower.rsplit('.', 1)[-1]} file")
     check_text(head, name)
@@ -190,7 +197,9 @@ async def upload(
         for upload_file in files:
             name = Path((upload_file.filename or "upload").replace("\\", "/")).name[:200]
             if not allowed_filename(name):
-                errors.append(f"{name}: file type not accepted (.log, .txt, .json, .gz, .zip ...)")
+                errors.append(
+                    f"{name}: file type not accepted (.log, .txt, .json, .evtx, .gz, .zip ...)"
+                )
                 continue
             dest = worker.new_upload_path()
             size = await _save_upload(upload_file, dest)

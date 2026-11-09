@@ -50,6 +50,21 @@ WEBSERVER = LogSource(category="webserver")
 LINUX_AUTH = LogSource(product="linux", service="auth")
 ECS = LogSource(product="ecs")
 GENERIC_JSON = LogSource(product="json")
+# Windows channels ThreatLens reads from EVTX (others get a table when first seen).
+WINDOWS_SECURITY = LogSource(product="windows", service="security")
+WINDOWS_SYSTEM = LogSource(product="windows", service="system")
+WINDOWS_APPLICATION = LogSource(product="windows", service="application")
+WINDOWS_SYSMON = LogSource(product="windows", service="sysmon")
+WINDOWS_POWERSHELL = LogSource(product="windows", service="powershell")
+WINDOWS_POWERSHELL_CLASSIC = LogSource(product="windows", service="powershell-classic")
+WINDOWS_SOURCES = (
+    WINDOWS_SECURITY,
+    WINDOWS_SYSTEM,
+    WINDOWS_APPLICATION,
+    WINDOWS_SYSMON,
+    WINDOWS_POWERSHELL,
+    WINDOWS_POWERSHELL_CLASSIC,
+)
 
 
 @dataclass(slots=True)

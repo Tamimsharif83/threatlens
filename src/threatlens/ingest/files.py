@@ -37,7 +37,9 @@ def ingest_path(
     try:
         for member in open_members(path, name, max_bytes):
             member_opts = replace(
-                opts, source_name=opts.source_name or source_name_for(member.name)
+                opts,
+                source_name=opts.source_name or source_name_for(member.name),
+                parser_type=member.parser or opts.parser_type,  # EVTX is always "evtx"
             )
             rep = ingest_stream(
                 conn,
@@ -57,7 +59,7 @@ def source_name_for(member_name: str) -> str:
     """Default source name: the file name without archive prefix and rotation suffix."""
     base = member_name.rsplit("!", 1)[-1].rsplit("/", 1)[-1]
     parts = base.split(".")
-    while len(parts) > 1 and (parts[-1].isdigit() or parts[-1] in ("gz", "zip")):
+    while len(parts) > 1 and (parts[-1].isdigit() or parts[-1] in ("gz", "zip", "evtx")):
         parts.pop()
     return ".".join(parts) or base
 
