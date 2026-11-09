@@ -12,9 +12,9 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.2.0, Phase 1 of 8).** Log ingestion, storage,
-> users and the overview dashboard work. Sigma detection arrives next — see the
-> [roadmap](#roadmap).
+> **Status: early development (v0.3.0, Phase 2 of 8).** Ingestion, Sigma
+> detection on every batch, retro-hunts, rule tests and a first alert list work.
+> The triage workflow arrives next — see the [roadmap](#roadmap).
 
 ![ThreatLens overview page](docs/images/overview.png)
 
@@ -73,7 +73,8 @@ docker compose logs threatlens | grep -A3 "first run"
 Lost the admin password? `docker exec -it threatlens threatlens user reset-password admin`
 
 Useful CLI commands (inside the container: `docker exec threatlens threatlens …`):
-`ingest`, `db stats`, `db purge`, `db compact [--full]`, `synth`, `user reset-password`.
+`ingest`, `rules lint|test|list|hunt|import-sigmahq`, `db stats|purge|compact`, `synth`,
+`user reset-password`.
 
 ### Changing the port
 
@@ -102,7 +103,7 @@ Compose file or the documented commands stop binding to localhost.
 | Platform | One container, offline, < 100 MB idle RAM, login with argon2id, roles, audit log | ✅ Phase 0 |
 | Ingestion | Apache/Nginx (combined, common, custom formats), ECS JSON Lines, Linux auth, generic JSON + field mapping, `.gz`/`.zip`; drag & drop upload, CLI, watch folder with rotation handling; dedup; retention; ingest reports | ✅ Phase 1 |
 | Users | Admin creates analysts in Settings (one-time password, forced change); no passwords in env vars except the first admin | ✅ Phase 1 |
-| Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint | Phase 2 |
+| Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint, compiled SQL shown per rule, SigmaHQ import | ✅ Phase 2 |
 | Triage | Alert queue, "why it fired", entity pivots, search, read-only SQL hunt console, suppressions | Phase 3 |
 | Correlation | Sigma v2 `event_count`, `value_count`, `temporal`, `temporal_ordered` | Phase 4 |
 | Cases & reports | Case timeline, IOCs (CSV/JSON), Markdown/HTML incident report | Phase 5 |
@@ -150,11 +151,21 @@ How events are stored: [docs/schema.md](docs/schema.md).
 
 ## Writing rules
 
-ThreatLens uses standard [Sigma](https://sigmahq.io/) rules. You will put your
-own rules in `/data/rules`. A guide (`docs/writing-rules.md` and
-`docs/correlation-rules.md`) arrives with Phase 2. ThreatLens ships only a
-handful of example rules; it is a platform for **your** detection engineering,
-not a rule pack.
+ThreatLens runs standard [Sigma](https://sigmahq.io/) rules. Put yours in
+`/data/rules` (mount a folder there), with optional test fixtures in
+`/data/rules/tests/<rule-id>/tp.log` (must fire) and `tn.log` (must not), then
+click **Rules → Reload**. ThreatLens ships five `[Example]` rules only; it is a
+platform for **your** detection engineering, not a rule pack.
+
+```bash
+threatlens rules lint      # valid Sigma, unique ids, required metadata, ATT&CK tags
+threatlens rules test      # true/false-positive fixtures, also run on every reload
+threatlens rules hunt <id> # retro-hunt over all stored events
+```
+
+Guides: [writing rules](docs/writing-rules.md) ·
+[correlation rules](docs/correlation-rules.md) ·
+[how the engine works](docs/adr/0005-detection-engine.md).
 
 ## Configuration
 
@@ -175,7 +186,9 @@ All settings are environment variables with the `TL_` prefix.
 | `TL_DELETE_UPLOADS` | `true` | Delete uploaded files after ingest (`false` keeps them in `/data/uploads/kept`) |
 | `TL_WATCH_ENABLED` | `true` | Ingest files placed in `/data/inbox` |
 | `TL_WATCH_INTERVAL_SECONDS` | `5` | How often the watch folder is checked |
-| `TL_ALERT_THROTTLE_MINUTES` | `60` | Same rule + same entity within this window = one alert (Phase 2) |
+| `TL_ALERT_THROTTLE_MINUTES` | `60` | Same rule + same entity (source IP, else user, else host) within this window of event time = one alert |
+| `TL_RULES_DIR` | `/data/rules` | Your Sigma rules |
+| `TL_BUILTIN_RULES` | `true` | Load the bundled `[Example]` rules |
 | `TL_DEFAULT_TIMEZONE` | `UTC` | Timezone for log timestamps without one (changeable in Settings) |
 | `TL_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `TL_SESSION_HOURS` | `12` | Session lifetime |
@@ -206,8 +219,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 |---|---|---|
 | 0 | Plan & scaffold: ADRs, CI, Docker, login, empty dashboard | ✅ done |
 | 1 | Ingestion & storage | ✅ done |
-| 2 | Detection (Sigma) | next |
-| 3 | Triage | |
+| 2 | Detection (Sigma) | ✅ done |
+| 3 | Triage | next |
 | 4 | Correlation | |
 | 5 | Cases & reports | |
 | 6 | ATT&CK coverage & metrics | |

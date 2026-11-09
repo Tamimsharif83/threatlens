@@ -42,8 +42,8 @@ flowchart TB
 | `storage` (events, maintenance) | per-log-source event tables, field catalog, retention, stats | 1 |
 | `services` | background threads: ingest worker, inbox watcher, maintenance | 1 |
 | `stats` | overview aggregates | 1 |
-| `detection` | load/validate Sigma rules, compile with pySigma, run per batch and retro-hunt | 2 |
-| `alerts` | grouping, throttling, triage state | 2–3 |
+| `detection` | load/validate/lint Sigma rules, route to tables, compile with pySigma, run per batch and retro-hunt, rule tests, SigmaHQ import | 2 |
+| `alerts` | grouping, throttling, event references (triage state in Phase 3) | 2–3 |
 | `correlation` | Sigma v2 correlation rules, parent/child alert links | 4 |
 | `cases`, `reports` | cases, timelines, IOCs, Markdown/HTML export | 5 |
 | `attack` | technique catalog, coverage matrix, Navigator export | 6 |

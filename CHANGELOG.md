@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-08
+
+Phase 2: detection.
+
+### Added
+- Sigma rules compiled with pySigma + pySigma-backend-sqlite, routed to event tables
+  by log source (webserver, Linux auth, ECS with category condition, mapped JSON
+  sources); Sigma webserver field names mapped to ECS.
+- Detection on every ingested batch (uploads, watch folder, CLI) by row-id range,
+  and retro-hunts over all stored data (UI button and `threatlens rules hunt`).
+- Alerts grouped per rule and primary entity within the throttle window, with
+  references to every matched event; an event is never counted twice per rule.
+- Rules page: enable/disable, reload, validation errors with file and reason,
+  validator warnings, test status, hits/alerts/last fired; rule page with YAML,
+  compiled SQL per table and recent alerts.
+- Alerts page (first version) and overview widgets: open alerts by severity, top rules.
+- Detection-as-code: `threatlens rules lint` (Sigma validity, unique UUID ids,
+  required metadata, ATT&CK tags) and `threatlens rules test` (tp/tn fixtures as raw
+  log lines or JSON events); both run in CI; tests also run on every reload.
+- `threatlens rules import-sigmahq` for a local SigmaHQ clone (DRL notice kept).
+- Five `[Example]` rules with fixtures: SQL injection in query, scanner user agent,
+  user added to a privileged group, failed SSH login, script upload via the app.
+- Docs: ADR-0005, `writing-rules.md`, `correlation-rules.md`.
+
 ## [0.2.0] - 2026-11-08
 
 Phase 1: ingestion and storage.
@@ -70,6 +94,7 @@ Phase 0: plan and scaffold.
 - CI (lint, types, tests, Docker build, smoke test, Trivy), release workflow
   (multi-arch to GHCR), Dependabot, issue/PR templates, pre-commit hooks.
 
-[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Tamimsharif83/threatlens/releases/tag/v0.1.0
