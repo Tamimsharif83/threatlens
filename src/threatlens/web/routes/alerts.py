@@ -13,10 +13,13 @@ from starlette.datastructures import FormData
 
 from threatlens.alerts.store import LEVELS, AlertRow, counts_by_level, get_alert, linked_alerts
 from threatlens.alerts.triage import (
+    EVENTS_PER_PAGE,
+    KEY_FIELDS,
     RESOLUTIONS,
     STATUSES,
     TriageError,
     add_note,
+    alert_event_tables,
     alert_events,
     assign,
     history,
@@ -171,7 +174,12 @@ def _alert_or_404(db: sqlite3.Connection, alert_id: int) -> AlertRow:
 
 @router.get("/alerts/{alert_id}")
 def alert_detail(
-    request: Request, alert_id: int, session: SessionDep, db: DbDep, error: str | None = None
+    request: Request,
+    alert_id: int,
+    session: SessionDep,
+    db: DbDep,
+    error: str | None = None,
+    page: int = 1,
 ) -> Response:
     alert = _alert_or_404(db, alert_id)
     services: Services = request.app.state.services
@@ -188,7 +196,10 @@ def alert_detail(
     rule = db.execute(
         "SELECT yaml, description, load_error FROM rules WHERE id = ?", (alert.rule_id,)
     ).fetchone()
-    events = alert_events(db, alert_id)
+    linked, tables = alert_event_tables(db, alert_id)
+    pages = max(1, -(-linked // EVENTS_PER_PAGE))
+    page = min(max(page, 1), pages)
+    events = alert_events(db, alert_id, limit=EVENTS_PER_PAGE, offset=(page - 1) * EVENTS_PER_PAGE)
     pivots = []
     for name, value in alert.entities.items():
         pivots.append(
@@ -209,13 +220,18 @@ def alert_detail(
             "rule_fields": rule_fields,
             "events": events,
             "events_total": alert.event_count,
+            "events_linked": linked,
+            "events_first": (page - 1) * EVENTS_PER_PAGE + 1,
+            "page": page,
+            "pages": pages,
+            "key_fields": KEY_FIELDS,
             "notes": notes(db, alert_id),
             "history": history(db, alert_id),
             "statuses": STATUSES,
             "resolutions": RESOLUTIONS,
             "users": _users(db),
             "pivots": pivots,
-            "tables": sorted({e.table for e in events}),
+            "tables": tables,
             "error": error,
             "children": children,
             "parents": parents,

@@ -29,6 +29,22 @@ STATUSES = ("new", "in_progress", "closed")
 RESOLUTIONS = ("true_positive", "false_positive", "benign_true_positive")
 MAX_NOTE = 10_000
 MAX_EVENTS_SHOWN = 200
+EVENTS_PER_PAGE = 25
+# Shown on every event card next to the rule's own fields; the rest is folded away.
+KEY_FIELDS = (
+    "event.action",
+    "host.name",
+    "user.name",
+    "source.ip",
+    "destination.ip",
+    "http.request.method",
+    "url.original",
+    "http.response.status_code",
+    "process.command_line",
+    "file.path",
+    "dns.question.name",
+    "message",
+)
 
 
 class TriageError(ValueError):
@@ -225,11 +241,20 @@ def event_view(conn: sqlite3.Connection, table: str, row: sqlite3.Row) -> EventV
 
 
 def alert_events(
-    conn: sqlite3.Connection, alert_id: int, limit: int = MAX_EVENTS_SHOWN
+    conn: sqlite3.Connection, alert_id: int, limit: int = MAX_EVENTS_SHOWN, offset: int = 0
 ) -> list[EventView]:
     refs = conn.execute(
         "SELECT table_name, event_id, event_ts FROM alert_events WHERE alert_id = ? "
-        "ORDER BY event_ts LIMIT ?",
-        (alert_id, limit),
+        "ORDER BY event_ts, event_id LIMIT ? OFFSET ?",
+        (alert_id, limit, offset),
     ).fetchall()
     return load_events(conn, [(r[0], r[1], r[2]) for r in refs])
+
+
+def alert_event_tables(conn: sqlite3.Connection, alert_id: int) -> tuple[int, list[str]]:
+    """How many events an alert links to, and the tables they are in."""
+    rows = conn.execute(
+        "SELECT table_name, count(*) FROM alert_events WHERE alert_id = ? GROUP BY 1 ORDER BY 1",
+        (alert_id,),
+    ).fetchall()
+    return sum(r[1] for r in rows), [r[0] for r in rows]

@@ -263,6 +263,11 @@ mark.hl { background: #3b2f06; color: #fde68a; border-radius: 3px; padding: 0 2p
 .event-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .kv-tight { gap: 2px 14px; font-size: 13px; }
 .kv-tight dd { overflow-wrap: anywhere; }
+.event-more { margin-top: 8px; }
+.batch-error { max-width: 32ch; margin-top: 4px; }
+.event-more > summary { color: var(--text-muted); }
+.event-more[open] > summary { margin-bottom: 6px; }
+.pager { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
 .note { border-left: 3px solid var(--border); padding: 4px 10px; margin-bottom: 10px; }
 .note p { margin: 4px 0 0; }
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
@@ -385,7 +390,7 @@ input[type="number"] {
 /* ---------- forms & buttons ---------- */
 
 .stack { display: grid; gap: 14px; }
-.field { display: grid; gap: 6px; }
+.field { display: grid; gap: 6px; min-width: 0; }  /* let long <option> text shrink, not widen the page */
 .field > span { font-size: 13px; color: var(--text-muted); }
 input[type="text"], input[type="password"], input[type="search"], select, textarea {
   width: 100%;
@@ -395,6 +400,7 @@ input[type="text"], input[type="password"], input[type="search"], select, textar
   border-radius: 6px;
   padding: 9px 10px;
   font: inherit;
+  max-width: 100%;
 }
 input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--accent); outline-offset: 0; }
 

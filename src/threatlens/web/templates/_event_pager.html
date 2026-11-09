@@ -1,0 +1,5 @@
+<nav class="pager small" aria-label="Matched events pages">
+  {% if page > 1 %}<a class="btn btn-ghost btn-sm" href="/alerts/{{ a.id }}?page={{ page - 1 }}#events">&larr; Earlier</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn btn-ghost btn-sm" href="/alerts/{{ a.id }}?page={{ page + 1 }}#events">Later &rarr;</a>{% endif %}
+</nav>

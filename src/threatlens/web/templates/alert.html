@@ -105,8 +105,9 @@
   {% endif %}
 </section>
 
-<section class="panel">
-  <h2>Matched events <span class="muted small">({{ events|length }} of {{ events_total|num }} shown)</span></h2>
+<section class="panel" id="events">
+  <h2>Matched events <span class="muted small">({% if events %}{{ events_first|num }}–{{ (events_first + events|length - 1)|num }} of {{ events_linked|num }} linked{% if events_total > events_linked %}; the alert counted {{ events_total|num }}{% endif %}{% else %}none linked{% endif %})</span></h2>
+  {% if pages > 1 %}{% include "_event_pager.html" %}{% endif %}
   {% for e in events %}
   <article class="event-card">
     <header class="event-head">
@@ -115,14 +116,24 @@
       {% if e.purged %}<span class="badge status-failed">purged by retention</span>{% else %}<a class="small" href="/events/{{ e.table }}/{{ e.id }}">event #{{ e.id }}</a>{% endif %}
     </header>
     {% if not e.purged %}
+    {% set shown = rule_fields|select("in", e.fields)|list + key_fields|reject("in", rule_fields)|select("in", e.fields)|list %}
     <dl class="kv kv-tight">
-      {% for f in rule_fields if f in e.fields %}<dt><mark class="hl">{{ f }}</mark></dt><dd class="mono wrap"><mark class="hl">{{ e.fields[f] }}</mark></dd>{% endfor %}
-      {% for k, v in e.fields.items() if k not in rule_fields %}<dt>{{ k }}</dt><dd class="mono wrap">{{ v }}</dd>{% endfor %}
+      {% for f in shown %}{% if f in rule_fields %}<dt><mark class="hl">{{ f }}</mark></dt><dd class="mono wrap"><mark class="hl">{{ e.fields[f] }}</mark></dd>{% else %}<dt>{{ f }}</dt><dd class="mono wrap">{{ e.fields[f] }}</dd>{% endif %}{% endfor %}
     </dl>
-    {% if e.raw %}<pre class="logline">{{ e.raw }}</pre>{% endif %}
+    {% set rest = e.fields|reject("in", shown)|list %}
+    {% if rest or e.raw %}
+    <details class="event-more">
+      <summary class="small">{% if rest %}{{ rest|length }} more field{{ "s" if rest|length != 1 }}{% endif %}{% if rest and e.raw %} and {% endif %}{% if e.raw %}raw line{% endif %}</summary>
+      {% if rest %}<dl class="kv kv-tight">
+        {% for k in rest %}<dt>{{ k }}</dt><dd class="mono wrap">{{ e.fields[k] }}</dd>{% endfor %}
+      </dl>{% endif %}
+      {% if e.raw %}<pre class="logline">{{ e.raw }}</pre>{% endif %}
+    </details>
+    {% endif %}
     {% endif %}
   </article>
   {% endfor %}
+  {% if pages > 1 %}{% include "_event_pager.html" %}{% endif %}
 </section>
 
 <div class="grid-2">
