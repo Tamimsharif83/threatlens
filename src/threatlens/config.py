@@ -66,6 +66,8 @@ class Settings(BaseSettings):
         default=None, description="Your Sigma rules (default <data>/rules)."
     )
     builtin_rules: bool = Field(default=True, description="Load the bundled example rules.")
+    hunt_row_limit: Annotated[int, Field(ge=1, le=100_000)] = 1000
+    hunt_timeout_seconds: Annotated[float, Field(ge=0.5, le=300)] = 10.0
     alert_throttle_minutes: Annotated[int, Field(ge=0, le=10_080)] = 60
     default_timezone: str = "UTC"
     log_level: LogLevel = LogLevel.INFO
