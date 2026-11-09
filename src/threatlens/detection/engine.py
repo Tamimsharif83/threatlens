@@ -22,9 +22,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from threatlens.alerts.store import Match, RecordResult, RuleInfo, entities_from_row, record_matches
 from threatlens.alerts.suppress import Suppression, active_for_rule, record_hits
 from threatlens.config import Settings
+from threatlens.correlation.compiler import (
+    BaseRule,
+    CompiledCorrelation,
+    compile_correlation,
+    references,
+)
+from threatlens.correlation.runner import run_correlation
 from threatlens.detection.compiler import (
     CompiledRule,
     CompileError,
@@ -66,6 +75,7 @@ class ReloadReport:
 @dataclass(slots=True)
 class RunReport:
     rules_run: int = 0
+    correlations_run: int = 0
     suppressed: int = 0
     result: RecordResult = field(default_factory=RecordResult)
     errors: dict[str, str] = field(default_factory=dict)
@@ -101,6 +111,7 @@ class DetectionEngine:
         self._lock = threading.RLock()
         self._compiled: dict[tuple[str, str], CompiledRule | str] = {}  # value: query or error
         self._filters: list[str] = []  # YAML of valid Sigma filters
+        self._compiled_corr: dict[str, CompiledCorrelation | str] = {}
 
     # ---------------------------------------------------------------- loading
 
@@ -139,6 +150,8 @@ class DetectionEngine:
                 [(p, e, now) for p, e in result.file_errors.items()],
             )
             self._compiled.clear()
+            self._compiled_corr.clear()
+            self._mark_correlation_only(conn)
         self.check_compilation(conn)
         log.info(
             "rules reloaded",
@@ -151,6 +164,49 @@ class DetectionEngine:
         return report
 
     @staticmethod
+    def _resolve(conn: sqlite3.Connection, ref: str) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = conn.execute(
+            "SELECT * FROM rules WHERE id = ? OR name = ? ORDER BY id = ? DESC LIMIT 1",
+            (ref, ref, ref),
+        ).fetchone()
+        return row
+
+    def _mark_correlation_only(self, conn: sqlite3.Connection) -> None:
+        """Sigma v2: rules referenced by a correlation do not alert on their own unless
+        some enabled correlation that uses them says ``generate: true``."""
+        only: set[str] = set()
+        keep: set[str] = set()
+        for (text,) in conn.execute(
+            "SELECT yaml FROM rules WHERE kind = 'correlation' AND enabled = 1 "
+            "AND (load_error IS NULL OR load_error LIKE 'cannot compile%')"
+        ).fetchall():
+            doc = yaml.safe_load(text) or {}
+            generate = bool((doc.get("correlation") or {}).get("generate", False))
+            for ref in references(text):
+                row = self._resolve(conn, ref)
+                if row is not None:
+                    (keep if generate else only).add(row["id"])
+        conn.execute("UPDATE rules SET correlation_only = 0")
+        conn.executemany(
+            "UPDATE rules SET correlation_only = 1 WHERE id = ?", [(rid,) for rid in only - keep]
+        )
+
+    @staticmethod
+    def _loaded(row: sqlite3.Row) -> LoadedRule:
+        return LoadedRule(
+            id=row["id"],
+            title=row["title"],
+            kind=row["kind"],
+            origin=row["origin"],
+            path=row["path"],
+            yaml=row["yaml"],
+            sha256=row["sha256"],
+            name=row["name"],
+            logsource=json.loads(row["logsource"]),
+            load_error=row["load_error"],
+        )
+
+    @staticmethod
     def _default_enabled(lr: LoadedRule) -> bool:
         return lr.status not in ("deprecated", "unsupported")
 
@@ -161,13 +217,13 @@ class DetectionEngine:
         conn.execute(
             "INSERT INTO rules (id, title, kind, origin, path, level, status, description, "
             "author, tags, logsource, yaml, sha256, enabled, load_error, warnings, loaded_at, "
-            "updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "updated_by, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET title = excluded.title, kind = excluded.kind, "
             "origin = excluded.origin, path = excluded.path, level = excluded.level, "
             "status = excluded.status, description = excluded.description, "
             "author = excluded.author, tags = excluded.tags, logsource = excluded.logsource, "
             "yaml = excluded.yaml, sha256 = excluded.sha256, load_error = excluded.load_error, "
-            "warnings = excluded.warnings, loaded_at = excluded.loaded_at, "
+            "warnings = excluded.warnings, loaded_at = excluded.loaded_at, name = excluded.name, "
             "test_status = CASE WHEN rules.sha256 = excluded.sha256 THEN rules.test_status "
             "ELSE NULL END",
             (
@@ -189,6 +245,7 @@ class DetectionEngine:
                 json.dumps(lr.warnings),
                 now,
                 actor,
+                lr.name,
             ),
         )
 
@@ -212,6 +269,17 @@ class DetectionEngine:
             updates.append((error, rule_id))
         with transaction(conn):
             conn.executemany("UPDATE rules SET load_error = ? WHERE id = ?", updates)
+        # Correlations second: they depend on their base rules' (now saved) status.
+        corr_updates: list[tuple[str | None, str]] = []
+        for rule_id, yaml_text in conn.execute(
+            "SELECT id, yaml FROM rules WHERE kind = 'correlation' "
+            "AND (load_error IS NULL OR load_error LIKE 'cannot compile%')"
+        ).fetchall():
+            corr = self._compile_corr(conn, rule_id, yaml_text)
+            corr_error = f"cannot compile correlation: {corr}" if isinstance(corr, str) else None
+            corr_updates.append((corr_error, rule_id))
+        with transaction(conn):
+            conn.executemany("UPDATE rules SET load_error = ? WHERE id = ?", corr_updates)
 
     def _compile(self, rule_id: str, yaml_text: str, table: str) -> CompiledRule | str:
         key = (rule_id, table)
@@ -223,6 +291,51 @@ class DetectionEngine:
                     self._compiled[key] = str(exc)
             return self._compiled[key]
 
+    def _bases(self, conn: sqlite3.Connection, corr_yaml: str) -> list[BaseRule] | str:
+        catalog = table_catalog(conn)
+        present = set(EventStore(conn).event_tables())
+        bases: list[BaseRule] = []
+        for ref in references(corr_yaml):
+            row = self._resolve(conn, ref)
+            if row is None:
+                return f"referenced rule {ref!r} is not loaded"
+            if row["kind"] != "detection":
+                return f"referenced rule {ref!r} is not a detection rule"
+            if row["load_error"]:
+                return f"referenced rule {ref!r} has errors"
+            logsource = json.loads(row["logsource"])
+            tables = tables_for(logsource, catalog)
+            if not tables:
+                return f"referenced rule {ref!r} has no event table for its log source"
+            table = next((t for t in tables if t in present), tables[0])
+            bases.append(BaseRule(row["id"], row["name"], row["yaml"], table, logsource))
+        return bases
+
+    def _compile_corr(
+        self, conn: sqlite3.Connection, rule_id: str, yaml_text: str
+    ) -> CompiledCorrelation | str:
+        with self._lock:
+            if rule_id not in self._compiled_corr:
+                bases = self._bases(conn, yaml_text)
+                if isinstance(bases, str):
+                    self._compiled_corr[rule_id] = bases
+                else:
+                    try:
+                        self._compiled_corr[rule_id] = compile_correlation(
+                            yaml_text, bases, self._filters
+                        )
+                    except CompileError as exc:
+                        self._compiled_corr[rule_id] = str(exc)
+            return self._compiled_corr[rule_id]
+
+    def compiled_correlation_for(
+        self, conn: sqlite3.Connection, rule_id: str
+    ) -> CompiledCorrelation | str | None:
+        row = conn.execute("SELECT yaml, kind FROM rules WHERE id = ?", (rule_id,)).fetchone()
+        if row is None or row["kind"] != "correlation":
+            return None
+        return self._compile_corr(conn, rule_id, row["yaml"])
+
     def set_enabled(
         self, conn: sqlite3.Connection, rule_id: str, enabled: bool, actor: str | None
     ) -> None:
@@ -231,6 +344,7 @@ class DetectionEngine:
                 "UPDATE rules SET enabled = ?, updated_by = ? WHERE id = ?",
                 (int(enabled), actor, rule_id),
             )
+            self._mark_correlation_only(conn)
 
     def compiled_for(self, conn: sqlite3.Connection, rule_id: str) -> list[CompiledRule | str]:
         row = conn.execute(
@@ -249,7 +363,7 @@ class DetectionEngine:
             "AND load_error IS NULL"
         )
         if rule_id is None:
-            return conn.execute(sql + " AND enabled = 1").fetchall()
+            return conn.execute(sql + " AND enabled = 1 AND correlation_only = 0").fetchall()
         return conn.execute(sql + " AND id = ?", (rule_id,)).fetchall()
 
     def _ensure_columns(self, conn: sqlite3.Connection, compiled: CompiledRule) -> None:
@@ -343,12 +457,88 @@ class DetectionEngine:
             return report
         for rule in self._runnable(conn):
             self._run_rule(conn, rule, ranges, "ingest", report)
+        self._run_correlations(conn, ranges, report)
         return report
+
+    def _time_bounds(
+        self, conn: sqlite3.Connection, ranges: dict[str, list[tuple[int, int]]]
+    ) -> dict[str, tuple[int, int]]:
+        bounds: dict[str, tuple[int, int]] = {}
+        for table, spans in ranges.items():
+            for lo, hi in spans:
+                tmin, tmax = conn.execute(
+                    f"SELECT min(tl_ts), max(tl_ts) FROM {quote_ident(table)} "
+                    f"WHERE {ID} BETWEEN ? AND ?",
+                    (lo, hi),
+                ).fetchone()
+                if tmin is None:
+                    continue
+                old = bounds.get(table)
+                bounds[table] = (min(tmin, old[0]), max(tmax, old[1])) if old else (tmin, tmax)
+        return bounds
+
+    def _run_correlations(
+        self,
+        conn: sqlite3.Connection,
+        ranges: dict[str, list[tuple[int, int]]],
+        report: RunReport,
+        only: str | None = None,
+        origin: str = "ingest",
+    ) -> None:
+        """Correlations whose source tables received new rows, over the new rows' time
+        range widened backwards by the rule's timespan."""
+        sql = (
+            "SELECT id, title, level, tags, yaml FROM rules WHERE kind = 'correlation' "
+            "AND load_error IS NULL"
+        )
+        rows = (
+            conn.execute(sql + " AND id = ?", (only,))
+            if only
+            else conn.execute(sql + " AND enabled = 1")
+        ).fetchall()
+        if not rows:
+            return
+        bounds = self._time_bounds(conn, ranges)
+        window = self.settings.alert_throttle_minutes * 60_000
+        for row in rows:
+            compiled = self._compile_corr(conn, row["id"], row["yaml"])
+            if isinstance(compiled, str):
+                report.errors[row["id"]] = compiled
+                continue
+            touched = [t for t in set(compiled.source_tables.values()) if t in bounds]
+            if not touched:
+                continue
+            start = min(bounds[t][0] for t in touched) - compiled.timespan_ms
+            end = max(bounds[t][1] for t in touched)
+            info = RuleInfo(
+                row["id"], row["title"], row["level"] or "medium", json.loads(row["tags"])
+            )
+            try:
+                result = run_correlation(conn, compiled, info, start, end, window, origin)
+            except sqlite3.Error as exc:
+                report.errors[row["id"]] = f"correlation query failed: {exc}"
+                log.warning("correlation failed", extra={"rule": row["id"], "error": str(exc)})
+                continue
+            report.result.merge(result)
+            report.correlations_run += 1
 
     def retro_hunt(self, conn: sqlite3.Connection, rule_id: str) -> RunReport:
         """Run one rule (enabled or not) over every stored event."""
         register_functions(conn)
         report = RunReport()
+        kind = conn.execute("SELECT kind FROM rules WHERE id = ?", (rule_id,)).fetchone()
+        if kind is not None and kind[0] == "correlation":
+            everything: dict[str, list[tuple[int, int]]] = {}
+            for table in EventStore(conn).event_tables():
+                lo, hi = conn.execute(
+                    f"SELECT min({ID}), max({ID}) FROM {quote_ident(table)}"
+                ).fetchone()
+                if lo is not None:
+                    everything[table] = [(lo, hi)]
+            self._run_correlations(conn, everything, report, only=rule_id, origin="retro")
+            if not report.correlations_run and rule_id not in report.errors:
+                report.errors[rule_id] = "no data for this correlation's log sources, or errors"
+            return report
         rows = self._runnable(conn, rule_id)
         if not rows:
             report.errors[rule_id] = "rule not found, not a detection rule, or has errors"
@@ -377,18 +567,15 @@ class DetectionEngine:
         dirs = rule_test_dirs(self.settings)
         results = []
         for row in rows:
-            lr = LoadedRule(
-                id=row["id"],
-                title=row["title"],
-                kind=row["kind"],
-                origin=row["origin"],
-                path=row["path"],
-                yaml=row["yaml"],
-                sha256=row["sha256"],
-                logsource=json.loads(row["logsource"]),
-                load_error=row["load_error"],
-            )
-            results.append(run_rule_test(lr, dirs, self._filters))
+            lr = self._loaded(row)
+            bases = None
+            if lr.kind == "correlation":
+                bases = [
+                    self._loaded(b)
+                    for ref in references(lr.yaml)
+                    if (b := self._resolve(conn, ref)) is not None and b["kind"] == "detection"
+                ]
+            results.append(run_rule_test(lr, dirs, self._filters, bases))
         now = now_ms()
         with transaction(conn):
             conn.executemany(

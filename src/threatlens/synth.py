@@ -95,12 +95,25 @@ def auth_lines(
     rnd = random.Random(seed)
     t = start
     pid = 1000
-    for _ in range(n):
+    burst_left, burst_ip = 0, ""
+    for i in range(n):
+        if i % 400 == 40:  # every 400 lines: a 15-attempt burst from one address
+            burst_left, burst_ip = 15, rnd.choice(_ATTACKERS)
+        if burst_left:
+            burst_left -= 1
+            t += timedelta(seconds=rnd.randint(1, 4))
+            pid += 1
+            stamp = f"{t.strftime('%b')} {t.day:>2} {t.strftime('%H:%M:%S')}"
+            yield (
+                f"{stamp} {host} sshd[{pid}]: Failed password for root from {burst_ip} "
+                f"port {rnd.randint(30000, 65000)} ssh2"
+            )
+            continue
         t += timedelta(seconds=rnd.randint(1, 40))
         pid += rnd.randint(1, 5)
         stamp = f"{t.strftime('%b')} {t.day:>2} {t.strftime('%H:%M:%S')}"
         r = rnd.random()
-        if r < 0.35:  # brute force from an attacker
+        if r < 0.35:  # scattered failed logins from attackers
             ip = rnd.choice(_ATTACKERS)
             user = rnd.choice(_BAD_USERS)
             invalid = "invalid user " if user not in ("root",) else ""

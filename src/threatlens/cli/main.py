@@ -306,8 +306,14 @@ def rules_test(dirs: tuple[Path, ...], test_dirs: tuple[Path, ...], require_fixt
     fixture_dirs = list(test_dirs) or rule_test_dirs(_load_settings())
     failed = 0
     filters = [f.yaml for f in result.filters if f.load_error is None]
+    by_ref = {r.id: r for r in result.rules} | {r.name: r for r in result.rules if r.name}
     for rule in result.rules:
-        res = run_rule_test(rule, fixture_dirs, filters)
+        bases = None
+        if rule.kind == "correlation":
+            from threatlens.correlation.compiler import references  # noqa: PLC0415
+
+            bases = [by_ref[ref] for ref in references(rule.yaml) if ref in by_ref]
+        res = run_rule_test(rule, fixture_dirs, filters, bases)
         missing = res.status == "none" and rule.kind == "detection"
         bad = res.status == "fail" or (require_fixtures and missing)
         failed += bad

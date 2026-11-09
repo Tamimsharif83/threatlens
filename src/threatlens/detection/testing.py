@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from threatlens.correlation.compiler import BaseRule, CompiledCorrelation, compile_correlation
+from threatlens.correlation.runner import create_views, ensure_columns
 from threatlens.detection.compiler import CompileError, compile_detection, tables_for
 from threatlens.detection.engine import BUILTIN_TABLES, register_functions, table_catalog
 from threatlens.detection.loader import LoadedRule
@@ -162,11 +164,15 @@ def _evaluate(
 
 
 def run_rule_test(
-    rule: LoadedRule, test_dirs: list[Path], filters: Sequence[str] = ()
+    rule: LoadedRule,
+    test_dirs: list[Path],
+    filters: Sequence[str] = (),
+    bases: Sequence[LoadedRule] | None = None,
 ) -> RuleTestResult:
     result = RuleTestResult(rule.id, rule.title, "none")
+    if rule.kind == "correlation":
+        return run_correlation_test(rule, bases or [], test_dirs, filters)
     if rule.kind != "detection":
-        result.messages.append("correlation rule tests arrive with correlation support")
         return result
     if rule.load_error:
         result.status = "fail"
@@ -209,5 +215,78 @@ def run_rule_test(
         )
     if false_hits:
         result.messages.append(f"{len(false_hits)} true-negative event(s) matched")
+    result.status = "fail" if result.messages else "pass"
+    return result
+
+
+# ---------------------------------------------------------------- correlation rules
+
+
+def _table_for(rule: LoadedRule) -> tuple[str, LogSource]:
+    return _target_logsource(rule)
+
+
+def _correlation_rows(compiled: CompiledCorrelation, events: list[Event]) -> int:
+    """Number of window results the correlation produces over ``events`` alone."""
+    with tempfile.TemporaryDirectory(prefix="tl-corrtest-") as tmp:
+        db_path = Path(tmp) / "test.db"
+        init_db(db_path)
+        conn = connect(db_path)
+        try:
+            register_functions(conn)
+            store = EventStore(conn)
+            for i, ev in enumerate(events):
+                with transaction(conn):
+                    store.insert([PreparedEvent(ev, content_hash("c", ev.raw or str(i), i))], 1)
+            tables = set(compiled.source_tables.values())
+            if not tables <= set(store.event_tables()):
+                return 0
+            ensure_columns(conn, compiled)
+            create_views(conn, tables, 0, 2**62)
+            return len(conn.execute(compiled.sql).fetchall())
+        finally:
+            conn.close()
+
+
+def run_correlation_test(
+    rule: LoadedRule,
+    bases: Sequence[LoadedRule],
+    test_dirs: list[Path],
+    filters: Sequence[str] = (),
+) -> RuleTestResult:
+    """tp fixtures must make the correlation fire at least once; tn fixtures never."""
+    result = RuleTestResult(rule.id, rule.title, "none")
+    if rule.load_error:
+        result.status = "fail"
+        result.messages.append(rule.load_error)
+        return result
+    directory = find_fixture_dir(rule.id, test_dirs)
+    if directory is None:
+        result.messages.append("no fixtures (tests/rules/<rule-id>/tp.log, tn.log, *.jsonl)")
+        return result
+    if not bases:
+        result.status = "fail"
+        result.messages.append("the rules this correlation references are not loaded")
+        return result
+    base_rules = [BaseRule(b.id, b.name, b.yaml, _table_for(b)[0], b.logsource) for b in bases]
+    try:
+        compiled = compile_correlation(rule.yaml, base_rules, filters)
+        _, table_ls = _table_for(bases[0])
+        tp = _load_fixture(directory, "tp", table_ls)
+        tn = _load_fixture(directory, "tn", table_ls)
+    except (CompileError, ValueError, OSError) as exc:
+        result.status = "fail"
+        result.messages.append(str(exc))
+        return result
+    if not tp and not tn:
+        result.messages.append("fixture folder has no tp/tn files")
+        return result
+    result.tp, result.tn = len(tp or []), len(tn or [])
+    if tp is not None and _correlation_rows(compiled, tp) == 0:
+        result.messages.append("the true-positive events did not make the correlation fire")
+    if tn is not None and (n := _correlation_rows(compiled, tn)):
+        result.messages.append(
+            f"the true-negative events made the correlation fire ({n} window(s))"
+        )
     result.status = "fail" if result.messages else "pass"
     return result

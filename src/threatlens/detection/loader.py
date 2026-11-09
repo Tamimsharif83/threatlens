@@ -187,7 +187,9 @@ def load_document(doc: str, path: str, origin: str) -> LoadedRule:
         lr.level = rule.level.name.lower() if rule.level else lr.level
     try:
         parsed = [
-            r for r in SigmaCollection.from_yaml(doc).rules if isinstance(r, SigmaRule)
+            r
+            for r in SigmaCollection.from_yaml(doc, resolve_references=False).rules
+            if isinstance(r, SigmaRule)
         ]  # validators apply to detection rules
         issues = _validator().validate_rules(iter(parsed))
         lr.warnings = sorted({f"{type(i).__name__}: {i.description}" for i in issues})
