@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block title %}Hunt · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head panel-head">
+  <div>
+    <h1>Hunt console</h1>
+    <p class="muted">Read-only SQL over the event tables. Max {{ limits.hunt_row_limit|num }} rows, {{ limits.hunt_timeout_seconds }} s per query. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs the query.</p>
+  </div>
+  <a class="btn btn-ghost" href="/search">Field search</a>
+</div>
+
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="hunt-layout">
+  <section class="panel">
+    <form method="post" action="/hunt" class="stack" id="hunt-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field"><span>Query</span>
+        <textarea name="sql" id="hunt-sql" rows="10" spellcheck="false" class="code-input" maxlength="20000">{{ sql }}</textarea>
+      </label>
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary">Run</button>
+        <button type="submit" name="format" value="csv" class="btn btn-ghost">Export CSV</button>
+      </div>
+    </form>
+
+    {% if result %}
+      {% if result.error %}
+        <div class="alert alert-error" role="alert">{{ result.error }}</div>
+      {% else %}
+        <p class="muted small">{{ result.rows|length }}{% if result.truncated %}+ (row limit reached){% endif %} row(s) in {{ result.elapsed_ms }} ms</p>
+        {% if result.rows %}
+        <div class="table-wrap">
+        <table class="table compact">
+          <thead><tr>{% for c in result.columns %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in result.rows %}<tr>{% for v in row %}<td class="small mono wrap">{{ "NULL" if v is none else v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+        </div>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+
+    <details class="save-hunt">
+      <summary>Save this hunt</summary>
+      <form method="post" action="/hunt/saved" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="sql" value="{{ sql }}" id="save-sql">
+        <label class="field"><span>Name</span><input type="text" name="name" required maxlength="120"></label>
+        <label class="field"><span>ATT&amp;CK tag <small class="muted">(optional)</small></span><input type="text" name="attack_tag" maxlength="70" placeholder="attack.t1110"></label>
+        <label class="field field-wide"><span>Description</span><input type="text" name="description" maxlength="2000" placeholder="What does this hunt look for, and why?"></label>
+        <div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Save</button></div>
+      </form>
+    </details>
+  </section>
+
+  <aside class="stack">
+    <section class="panel">
+      <h2>Saved hunts</h2>
+      {% for h in saved %}
+      <div class="saved-hunt">
+        <a href="/hunt?saved={{ h.id }}">{{ h.name }}</a>
+        {% if h.attack_tag %}<span class="badge badge-muted">{{ h.attack_tag }}</span>{% endif %}
+        {% if h.description %}<div class="small muted">{{ h.description }}</div>{% endif %}
+        <form method="post" action="/hunt/saved/{{ h.id }}/delete" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-ghost btn-sm">Delete</button>
+        </form>
+      </div>
+      {% else %}<p class="empty">None yet.</p>{% endfor %}
+    </section>
+    <section class="panel">
+      <h2>Tables &amp; fields</h2>
+      {% for t, fields in schema.items() %}
+      <details><summary class="mono">{{ t }}</summary><p class="small mono wrap">tl_id, tl_ts, {% for f in fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %}</p></details>
+      {% else %}<p class="empty">No event tables yet.</p>{% endfor %}
+      <p class="small muted">Also readable: alerts, alert_events, rules, ingest_batches, sources, saved_hunts, suppressions, audit_log. Not readable: users, sessions.</p>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static('js/hunt.js') }}" defer></script>
+{% endblock %}

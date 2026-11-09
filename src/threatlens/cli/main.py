@@ -305,8 +305,9 @@ def rules_test(dirs: tuple[Path, ...], test_dirs: tuple[Path, ...], require_fixt
     result = load_rules(_rule_sources(dirs))
     fixture_dirs = list(test_dirs) or rule_test_dirs(_load_settings())
     failed = 0
+    filters = [f.yaml for f in result.filters if f.load_error is None]
     for rule in result.rules:
-        res = run_rule_test(rule, fixture_dirs)
+        res = run_rule_test(rule, fixture_dirs, filters)
         missing = res.status == "none" and rule.kind == "detection"
         bad = res.status == "fail" or (require_fixtures and missing)
         failed += bad

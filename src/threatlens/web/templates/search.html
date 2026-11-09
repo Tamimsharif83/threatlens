@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block title %}Search · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head panel-head">
+  <div>
+    <h1>Search</h1>
+    <p class="muted">Filter events by field. Times are UTC. For anything more complex, use the <a href="/hunt">SQL hunt console</a>.</p>
+  </div>
+  <a class="btn btn-ghost" href="/hunt">Hunt console (SQL)</a>
+</div>
+
+<section class="panel">
+  {% if not tables %}
+  <p class="empty">No events yet. <a href="/ingest">Ingest some logs</a> first.</p>
+  {% else %}
+  <form method="get" action="/search" class="stack">
+    <input type="hidden" name="run" value="1">
+    <div class="form-grid">
+      <label class="field"><span>Event table</span>
+        <select name="table">{% for t in tables %}<option value="{{ t }}" {% if t == table %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span>From (UTC)</span><input type="datetime-local" step="1" name="start" value="{{ start }}"></label>
+      <label class="field"><span>To (UTC)</span><input type="datetime-local" step="1" name="end" value="{{ end }}"></label>
+      <label class="field"><span>Order</span>
+        <select name="order"><option value="desc" {% if order == "desc" %}selected{% endif %}>newest first</option><option value="asc" {% if order == "asc" %}selected{% endif %}>oldest first</option></select>
+      </label>
+      <label class="field"><span>Max results</span><input type="number" name="limit" min="1" max="1000" value="{{ limit }}"></label>
+    </div>
+    <datalist id="field-names">{% for f in fields %}<option value="{{ f }}">{% endfor %}</datalist>
+    {% for c in rows %}
+    <div class="condition-row">
+      <input type="text" name="f{{ loop.index }}" list="field-names" value="{{ c.field }}" placeholder="field, e.g. source.ip" aria-label="Field {{ loop.index }}" maxlength="128">
+      <select name="op{{ loop.index }}" aria-label="Operator {{ loop.index }}">{% for k, label in operators.items() %}<option value="{{ k }}" {% if c.op == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <input type="text" name="v{{ loop.index }}" value="{{ c.value }}" placeholder="value" aria-label="Value {{ loop.index }}" maxlength="1024">
+    </div>
+    {% endfor %}
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Search</button></div>
+  </form>
+  {% endif %}
+</section>
+
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+{% if result %}
+<section class="panel">
+  <h2>{{ result.events|length }}{% if result.truncated %}+{% endif %} event(s)</h2>
+  {% if result.truncated %}<p class="muted small">More events match: narrow the time range or add conditions.</p>{% endif %}
+  {% if result.events %}
+  <div class="table-wrap">
+  <table class="table compact">
+    <thead><tr><th scope="col">Time (UTC)</th>{% for c in result.columns[:8] %}<th scope="col">{{ c }}</th>{% endfor %}<th scope="col"></th></tr></thead>
+    <tbody>
+      {% for e in result.events %}
+      <tr>
+        <td class="nowrap small mono">{{ e.ts|dt }}</td>
+        {% for c in result.columns[:8] %}<td class="small mono wrap">{{ e.fields.get(c, "") }}</td>{% endfor %}
+        <td><a class="small" href="/events/{{ e.table }}/{{ e.id }}">details</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <details><summary class="small muted">SQL used</summary><pre class="code">{{ result.sql }}</pre></details>
+</section>
+{% endif %}
+{% endblock %}

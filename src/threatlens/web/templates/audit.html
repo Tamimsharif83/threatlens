@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}Audit log · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Audit log</h1>
+  <p class="muted">Every sign-in, triage change, suppression, rule change, hunt and setting change.</p>
+</div>
+
+<section class="panel">
+  <form method="get" action="/audit" class="filter-bar">
+    <label class="field"><span>Action starts with</span><input type="text" name="action" value="{{ action }}" maxlength="64" placeholder="alert. / auth. / suppression."></label>
+    <label class="field"><span>Actor</span><input type="text" name="actor" value="{{ actor }}" maxlength="64"></label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost">Filter</button></div>
+  </form>
+  {% if entries %}
+  <div class="table-wrap">
+  <table class="table compact">
+    <thead><tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Details</th><th scope="col">IP</th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="nowrap small">{{ e.ts|dt }}</td>
+        <td>{{ e.actor or "system" }}</td>
+        <td class="mono small">{{ e.action }}</td>
+        <td class="mono small wrap">{% if e.target and e.target.startswith("alert:") %}<a href="/alerts/{{ e.target[6:] }}">{{ e.target }}</a>{% else %}{{ e.target or "" }}{% endif %}</td>
+        <td class="mono small wrap">{% for k, v in e.details.items() %}{{ k }}={{ v }} {% endfor %}</td>
+        <td class="mono small">{{ e.ip or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if more %}<p><a href="/audit?action={{ action|urlencode }}&actor={{ actor|urlencode }}&before={{ entries[-1].id }}">Older entries &rarr;</a></p>{% endif %}
+  {% else %}<p class="empty">No entries.</p>{% endif %}
+</section>
+{% endblock %}

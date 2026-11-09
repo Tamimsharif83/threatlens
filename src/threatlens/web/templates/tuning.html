@@ -1,0 +1,82 @@
+{% extends "layout.html" %}
+{% block title %}Tuning · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Tuning</h1>
+  <p class="muted">Two ways to silence known-good activity. Both are audited and visible here.</p>
+</div>
+
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+<section class="panel">
+  <h2>Suppressions (allowlist)</h2>
+  <p class="muted small">A match whose field equals the value (case-insensitive) does not create an alert. Leave the rule empty to apply to every rule.</p>
+  <form method="post" action="/tuning/suppressions" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field"><span>Rule</span>
+      <select name="rule_id"><option value="">all rules</option>
+        {% for r in rules %}<option value="{{ r.id }}" {% if form.get("rule_id") == r.id %}selected{% endif %}>{{ r.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>Field</span><input type="text" name="field" required maxlength="128" value="{{ form.get('field', '') }}" placeholder="source.ip"></label>
+    <label class="field"><span>Value</span><input type="text" name="value" required maxlength="1024" value="{{ form.get('value', '') }}"></label>
+    <label class="field"><span>Expires (UTC, optional)</span><input type="datetime-local" name="expires" value="{{ form.get('expires', '') }}"></label>
+    <label class="field field-wide"><span>Reason (required)</span><input type="text" name="reason" required maxlength="2000" value="{{ form.get('reason', '') }}" placeholder="e.g. internal vulnerability scanner, ticket SEC-123"></label>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Add suppression</button></div>
+  </form>
+
+  {% if suppressions %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">Rule</th><th scope="col">Match</th><th scope="col">Reason</th><th scope="col">By</th><th scope="col">Expires</th><th scope="col" class="num">Suppressed</th><th scope="col">Status</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for s in suppressions %}
+      <tr>
+        <td class="small">{% if s.rule_id %}<a href="/rules/{{ s.rule_id }}">{{ s.rule_id[:8] }}…</a>{% else %}all rules{% endif %}</td>
+        <td class="mono small wrap">{{ s.field }} = {{ s.value }}</td>
+        <td class="small wrap">{{ s.reason }}</td>
+        <td class="small">{{ s.created_by }}<div class="muted">{{ s.created_at|dt }}</div></td>
+        <td class="small nowrap">{{ s.expires_at|dt if s.expires_at else "never" }}</td>
+        <td class="num">{{ s.hits|num }}<div class="small muted">{{ s.last_hit_at|dt if s.last_hit_at else "" }}</div></td>
+        <td>
+          {% if not s.enabled %}<span class="badge badge-muted">disabled</span>
+          {% elif s.expired(now) %}<span class="badge status-queued">expired</span>
+          {% else %}<span class="badge status-done">active</span>{% endif %}
+        </td>
+        <td class="btn-row">
+          <form method="post" action="/tuning/suppressions/{{ s.id }}/{{ 'disable' if s.enabled else 'enable' }}" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-ghost btn-sm">{{ "Disable" if s.enabled else "Enable" }}</button>
+          </form>
+          <form method="post" action="/tuning/suppressions/{{ s.id }}/delete" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-ghost btn-sm">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No suppressions.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Sigma filters</h2>
+    <form method="post" action="/tuning/reload" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost btn-sm">Reload rules &amp; filters</button>
+    </form>
+  </div>
+  <p class="muted small">Sigma v2 filter documents in your rules folder (a <code>filter:</code> section instead of <code>detection:</code>). They are added to the matching rules' conditions when rules are compiled. See <a href="https://sigmahq.io/docs/meta/filters.html">Sigma filters</a>.</p>
+  {% for f in filters %}
+  <details class="filter-doc">
+    <summary>{{ f.title }} <span class="muted small mono">{{ f.path }}</span>{% if f.load_error %} <span class="badge status-failed">error</span>{% endif %}</summary>
+    {% if f.load_error %}<div class="alert alert-error">{{ f.load_error }}</div>{% endif %}
+    <pre class="code">{{ f.yaml }}</pre>
+  </details>
+  {% else %}<p class="empty">No Sigma filters loaded.</p>{% endfor %}
+</section>
+{% endblock %}

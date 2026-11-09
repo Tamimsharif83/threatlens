@@ -2,7 +2,8 @@
 {% set nav = [
   ("overview", "Overview", "/", None),
   ("alerts", "Alerts", "/alerts", None),
-  ("hunt", "Search & Hunt", None, "Phase 3"),
+  ("hunt", "Search & Hunt", "/search", None),
+  ("tuning", "Tuning", "/tuning", None),
   ("cases", "Cases", None, "Phase 5"),
   ("rules", "Rules", "/rules", None),
   ("attack", "ATT&CK coverage", None, "Phase 6"),
@@ -40,6 +41,7 @@
       {% endfor %}
       {% if user.is_admin %}
         <li><a href="/settings" {% if active == "settings" %}aria-current="page" class="active"{% endif %}>Settings</a></li>
+        <li><a href="/audit" {% if active == "audit" %}aria-current="page" class="active"{% endif %}>Audit log</a></li>
       {% endif %}
     </ul>
     <div class="sidebar-foot">

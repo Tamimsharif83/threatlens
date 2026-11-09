@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 
 from threatlens import audit
-from threatlens.alerts.store import LEVELS, counts_by_level, list_alerts
+from threatlens.alerts.store import list_alerts
 from threatlens.config import Settings
 from threatlens.detection.compiler import CompiledRule
 from threatlens.services import Services
@@ -191,31 +191,5 @@ def rule_detail(
             "compile_errors": [c for c in compiled if isinstance(c, str)],
             "alerts": list_alerts(db, rule_id=rule_id, limit=20),
             "hunt": job,
-        },
-    )
-
-
-@router.get("/alerts")
-def alerts_page(
-    request: Request,
-    session: SessionDep,
-    db: DbDep,
-    status_filter: str | None = None,
-    level: str | None = None,
-) -> Response:
-    if status_filter not in (None, "", "new", "in_progress", "closed"):
-        status_filter = None
-    if level not in (None, "", *LEVELS):
-        level = None
-    return render(
-        request,
-        "alerts.html",
-        {
-            "active": "alerts",
-            "alerts": list_alerts(db, status=status_filter or None, level=level or None, limit=200),
-            "counts": counts_by_level(db),
-            "levels": list(reversed(LEVELS)),
-            "status_filter": status_filter or "",
-            "level": level or "",
         },
     )

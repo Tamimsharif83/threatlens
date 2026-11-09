@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+{% block title %}Alert {{ a.id }} · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <p><a href="/alerts">&larr; Alerts</a></p>
+  <h1><span class="badge sev-{{ a.level }}">{{ a.level }}</span> {{ a.rule_title }}</h1>
+  <p class="muted">Alert #{{ a.id }} · {{ a.event_count|num }} event(s) · {{ a.first_seen|dt }} &rarr; {{ a.last_seen|dt }}{% if a.origin == "retro" %} · from a retro-hunt{% endif %}</p>
+</div>
+
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Triage</h2>
+    <dl class="kv">
+      <dt>Status</dt><dd><span class="badge status-{{ a.status }}">{{ a.status.replace("_", " ") }}</span>{% if a.resolution %} · {{ a.resolution.replace("_", " ") }}{% endif %}</dd>
+      <dt>Assignee</dt><dd>{{ a.assignee or "—" }}</dd>
+      <dt>Rule</dt><dd><a href="/rules/{{ a.rule_id }}">{{ a.rule_title }}</a></dd>
+      <dt>ATT&amp;CK</dt><dd>{% for t in a.tags %}<span class="badge badge-muted">{{ t }}</span> {% endfor %}</dd>
+    </dl>
+    <form method="post" action="/alerts/{{ a.id }}/status" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="status">
+      <label class="field"><span>Status</span>
+        <select name="status">{% for s in statuses %}<option value="{{ s }}" {% if a.status == s %}selected{% endif %}>{{ s.replace("_", " ") }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span>Resolution <small class="muted">(to close)</small></span>
+        <select name="resolution"><option value="">—</option>{% for r in resolutions %}<option value="{{ r }}" {% if a.resolution == r %}selected{% endif %}>{{ r.replace("_", " ") }}</option>{% endfor %}</select>
+      </label>
+      <div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Update status</button></div>
+    </form>
+    <form method="post" action="/alerts/{{ a.id }}/assign" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="assign">
+      <label class="field"><span>Assign to</span>
+        <select name="assignee"><option value="">nobody</option>{% for u in users %}<option value="{{ u }}" {% if a.assignee == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+      </label>
+      <div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Assign</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Entities &amp; pivots</h2>
+    {% if pivots %}
+    <table class="table compact">
+      <tbody>
+        {% for p in pivots %}
+        <tr>
+          <td class="mono">{{ p.field }}</td>
+          <td class="mono wrap pivot-value">{{ p.value }}</td>
+          <td class="btn-row">
+            {% for t in tables %}
+            <a class="btn btn-ghost btn-sm" href="/search?run=1&table={{ t|urlencode }}&f1={{ p.field|urlencode }}&op1=eq&v1={{ p.value|urlencode }}&start={{ p.start }}&end={{ p.end }}&order=asc">All {{ t.removeprefix("ev_") }} events ±1 h</a>
+            {% endfor %}
+            <a class="btn btn-ghost btn-sm" href="/alerts?status=all&q={{ p.value|urlencode }}">Other alerts</a>
+            <a class="btn btn-ghost btn-sm" href="/tuning?rule_id={{ a.rule_id|urlencode }}&field={{ p.field|urlencode }}&value={{ p.value|urlencode }}">Suppress…</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No shared entity across this alert's events.</p>{% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Why it fired</h2>
+  {% if rule %}
+    {% if rule.description %}<p class="prewrap">{{ rule.description }}</p>{% endif %}
+    <p class="muted small">Fields the rule tests are <mark class="hl">highlighted</mark> in the events below.</p>
+    <details><summary>Rule YAML</summary><pre class="code">{{ rule.yaml }}</pre></details>
+  {% else %}
+    <p class="empty">The rule that created this alert is no longer loaded.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Matched events <span class="muted small">({{ events|length }} of {{ events_total|num }} shown)</span></h2>
+  {% for e in events %}
+  <article class="event-card">
+    <header class="event-head">
+      <span class="mono small">{{ e.ts|dt }}</span>
+      <span class="badge badge-muted">{{ e.table.removeprefix("ev_") }}</span>
+      {% if e.purged %}<span class="badge status-failed">purged by retention</span>{% else %}<a class="small" href="/events/{{ e.table }}/{{ e.id }}">event #{{ e.id }}</a>{% endif %}
+    </header>
+    {% if not e.purged %}
+    <dl class="kv kv-tight">
+      {% for f in rule_fields if f in e.fields %}<dt><mark class="hl">{{ f }}</mark></dt><dd class="mono wrap"><mark class="hl">{{ e.fields[f] }}</mark></dd>{% endfor %}
+      {% for k, v in e.fields.items() if k not in rule_fields %}<dt>{{ k }}</dt><dd class="mono wrap">{{ v }}</dd>{% endfor %}
+    </dl>
+    {% if e.raw %}<pre class="logline">{{ e.raw }}</pre>{% endif %}
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Notes</h2>
+    {% for n in notes %}
+    <div class="note"><div class="small muted">{{ n.author }} · {{ n.created_at|dt }}</div><p class="prewrap">{{ n.body }}</p></div>
+    {% else %}<p class="empty">No notes yet.</p>{% endfor %}
+    <form method="post" action="/alerts/{{ a.id }}/note" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field"><span>Add a note</span><textarea name="body" rows="4" maxlength="10000" required></textarea></label>
+      <div><button type="submit" class="btn btn-ghost btn-sm">Add note</button></div>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>History</h2>
+    {% if history %}
+    <ul class="timeline">
+      {% for h in history %}
+      <li><span class="small muted">{{ h.ts|dt }}</span> <strong>{{ h.actor or "system" }}</strong> {{ h.action.replace("alert.", "") }}
+        {% if h.details.get("to") %}&rarr; {{ h.details.get("to") }}{% endif %}{% if h.details.get("resolution") %} ({{ h.details.get("resolution").replace("_", " ") }}){% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No changes yet.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

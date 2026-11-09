@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block title %}Event · ThreatLens{% endblock %}
+{% block content %}
+<div class="page-head">
+  <p><a href="/search?table={{ e.table|urlencode }}">&larr; Search</a></p>
+  <h1>Event #{{ e.id }} <span class="badge badge-muted">{{ e.table }}</span></h1>
+  <p class="muted">{{ e.ts|dt }}{% if batch %} · source {{ batch.name }} · <a href="/ingest/batches/{{ batch.id }}">batch #{{ batch.id }}</a> · {{ batch.file_name }} line {{ record }}{% endif %}</p>
+</div>
+
+{% if alerts %}
+<section class="panel">
+  <h2>Alerts on this event</h2>
+  <ul>{% for a in alerts %}<li><span class="badge sev-{{ a.level }}">{{ a.level }}</span> <a href="/alerts/{{ a.id }}">#{{ a.id }} {{ a.rule_title }}</a></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Fields</h2>
+  <table class="table compact">
+    <tbody>
+      {% for k, v in e.fields.items() %}
+      <tr>
+        <th scope="row" class="mono">{{ k }}</th>
+        <td class="mono wrap">{{ v }}</td>
+        <td><a class="small" href="/search?run=1&table={{ e.table|urlencode }}&f1={{ k|urlencode }}&op1=eq&v1={{ v|string|urlencode }}&start={{ e.ts - 3600000 }}&end={{ e.ts + 3600000 }}&order=asc">±1 h</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if e.raw %}<h3>Raw line</h3><pre class="logline">{{ e.raw }}</pre>{% endif %}
+</section>
+{% endblock %}

@@ -1,10 +1,14 @@
 {% extends "layout.html" %}
 {% block title %}Alerts · ThreatLens{% endblock %}
 {% block content %}
-<div class="page-head">
-  <h1>Alerts</h1>
-  <p class="muted">Matches of the same rule for the same source IP / user / host within {{ "the alert throttle window" }} are grouped into one alert. Triage (statuses, assignees, notes, pivots) arrives in Phase 3.</p>
+<div class="page-head panel-head">
+  <div>
+    <h1>Alerts</h1>
+    <p class="muted">Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> select · <kbd>o</kbd> open · <kbd>/</kbd> search · <kbd>?</kbd> help</p>
+  </div>
 </div>
+
+{% if message %}<div class="alert alert-ok" role="status">{{ message }}</div>{% endif %}
 
 <section class="stat-grid" aria-label="Open alerts by severity">
   {% for lvl, n in counts.items() %}
@@ -13,21 +17,118 @@
 </section>
 
 <section class="panel">
-  <form method="get" action="/alerts" class="form-grid">
+  <form method="get" action="/alerts" class="filter-bar" id="alert-filters">
     <label class="field"><span>Status</span>
-      <select name="status_filter">
-        <option value="">any</option>
-        {% for s in ["new", "in_progress", "closed"] %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s.replace("_", " ") }}</option>{% endfor %}
+      <select name="status">
+        <option value="open" {% if params.get("status") == "open" %}selected{% endif %}>open (new + in progress)</option>
+        {% for s in statuses %}<option value="{{ s }}" {% if params.get("status") == s %}selected{% endif %}>{{ s.replace("_", " ") }}</option>{% endfor %}
+        <option value="all" {% if params.get("status") == "all" %}selected{% endif %}>all</option>
       </select>
     </label>
     <label class="field"><span>Level</span>
-      <select name="level">
-        <option value="">any</option>
-        {% for l in levels %}<option value="{{ l }}" {% if l == level %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      <select name="level"><option value="">any</option>
+        {% for l in levels %}<option value="{{ l }}" {% if params.get("level") == l %}selected{% endif %}>{{ l }}</option>{% endfor %}
       </select>
     </label>
-    <div class="form-actions"><button type="submit" class="btn btn-ghost">Filter</button></div>
+    <label class="field"><span>Rule</span>
+      <select name="rule"><option value="">any</option>
+        {% for r in rules %}<option value="{{ r.rule_id }}" {% if params.get("rule") == r.rule_id %}selected{% endif %}>{{ r.rule_title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>Assignee</span>
+      <select name="assignee"><option value="">anyone</option>
+        <option value="me" {% if params.get("assignee") == "me" %}selected{% endif %}>me</option>
+        <option value="none" {% if params.get("assignee") == "none" %}selected{% endif %}>unassigned</option>
+        {% for u in users %}<option value="{{ u }}" {% if params.get("assignee") == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>Entity / rule text</span>
+      <input type="search" name="q" id="alert-search" value="{{ params.get("q") or '' }}" maxlength="200" placeholder="e.g. 203.0.113.66">
+    </label>
+    <label class="field"><span>Sort</span>
+      <select name="sort">
+        {% for k, label in [("last_seen", "last seen"), ("severity", "severity"), ("events", "events"), ("first_seen", "first seen")] %}
+        <option value="{{ k }}" {% if params.get("sort") == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="form-actions"><button type="submit" class="btn btn-ghost">Apply</button></div>
   </form>
-  {% include "_alert_table.html" %}
 </section>
+
+<form method="post" action="/alerts/bulk" id="bulk-form" class="panel">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="back" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+  <div class="bulk-bar">
+    <span class="muted small" id="selected-count">0 selected</span>
+    <select name="status" aria-label="New status">
+      {% for s in statuses %}<option value="{{ s }}">{{ s.replace("_", " ") }}</option>{% endfor %}
+    </select>
+    <select name="resolution" aria-label="Resolution (required to close)">
+      <option value="">resolution…</option>
+      {% for r in resolutions %}<option value="{{ r }}">{{ r.replace("_", " ") }}</option>{% endfor %}
+    </select>
+    <button type="submit" name="action" value="status" class="btn btn-ghost btn-sm">Set status</button>
+    <select name="assignee" aria-label="Assign to">
+      <option value="me">me</option><option value="">nobody</option>
+      {% for u in users %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+    </select>
+    <button type="submit" name="action" value="assign" class="btn btn-ghost btn-sm">Assign</button>
+  </div>
+
+  {% if alerts %}
+  <div class="table-wrap">
+  <table class="table" id="alert-table">
+    <thead>
+      <tr>
+        <th scope="col"><input type="checkbox" id="select-all" aria-label="Select all"></th>
+        <th scope="col">#</th>
+        <th scope="col">Level</th>
+        <th scope="col">Rule</th>
+        <th scope="col">Entities</th>
+        <th scope="col" class="num">Events</th>
+        <th scope="col">Last seen</th>
+        <th scope="col">Status</th>
+        <th scope="col">Assignee</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in alerts %}
+      <tr data-href="/alerts/{{ a.id }}">
+        <td><input type="checkbox" name="ids" value="{{ a.id }}" aria-label="Select alert {{ a.id }}"></td>
+        <td><a href="/alerts/{{ a.id }}">{{ a.id }}</a></td>
+        <td><span class="badge sev-{{ a.level }}">{{ a.level }}</span></td>
+        <td><a href="/alerts/{{ a.id }}">{{ a.rule_title }}</a>{% if a.origin == "retro" %} <span class="badge badge-muted">retro-hunt</span>{% endif %}</td>
+        <td class="small mono wrap">{% for k, v in a.entities.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
+        <td class="num">{{ a.event_count|num }}</td>
+        <td class="nowrap small">{{ a.last_seen|dt }}</td>
+        <td>
+          <span class="badge status-{{ a.status }}">{{ a.status.replace("_", " ") }}</span>
+          {% if a.resolution %}<div class="small muted">{{ a.resolution.replace("_", " ") }}</div>{% endif %}
+        </td>
+        <td class="small">{{ a.assignee or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if alerts|length >= page_size %}<p class="muted small">Showing the first {{ page_size }}. Narrow the filters to see more.</p>{% endif %}
+  {% else %}
+  <p class="empty">No alerts match these filters.</p>
+  {% endif %}
+</form>
+
+<dialog id="kbd-help" class="panel">
+  <h2>Keyboard shortcuts</h2>
+  <dl class="kv">
+    <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>next / previous alert</dd>
+    <dt><kbd>x</kbd></dt><dd>select / unselect</dd>
+    <dt><kbd>o</kbd> or <kbd>Enter</kbd></dt><dd>open alert</dd>
+    <dt><kbd>/</kbd></dt><dd>search entities</dd>
+    <dt><kbd>Esc</kbd></dt><dd>close this help</dd>
+  </dl>
+  <form method="dialog"><button type="submit" class="btn btn-ghost btn-sm">Close</button></form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static('js/alerts.js') }}" defer></script>
 {% endblock %}
