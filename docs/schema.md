@@ -59,7 +59,7 @@ Indexes: `tl_ts`, `tl_hash`, plus `source.ip`, `destination.ip`, `user.name` and
 | `event_tables` | each event table and its Sigma log source |
 | `event_fields` | each field (column) per table, its type, and when it was first seen |
 | `sources` | named sources: detected type, timezone override, options, newest event |
-| `ingest_batches` | one per file / archive member / watched file per day: origin, counts, malformed samples, status, error |
+| `ingest_batches` | one per file / archive member / watched file per day: origin, counts, malformed samples, status, error, whether detection ran (`detection`) |
 | `ingest_batch_tables` | per batch and table: event count and the `tl_id` range |
 | `raw_dicts` | zstd dictionaries for `tl_raw` |
 | `watch_files` | watch-folder follow state (inode, offset, fingerprint) |

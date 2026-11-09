@@ -10,7 +10,7 @@ needs at least 60% of them to match one format).
 | `ecs-json` | JSON Lines with Elastic Common Schema names | `product: ecs`, `category: <event.category>` | `ev_ecs` |
 | `linux-auth` | `auth.log` / `secure` | `product: linux`, `service: auth` | `ev_linux_auth` |
 | `json` | any JSON Lines, optionally with a field mapping | from the mapping (default `product: json`) | `ev_<product>_<service>_<category>` |
-| `evtx` | Windows `.evtx` files, or their records as JSON Lines (`evtx_dump -o jsonl`) | `product: windows`, `service: <channel>` | `ev_windows_<service>` |
+| `evtx` | Windows `.evtx` files, their records as JSON Lines (`evtx_dump -o jsonl`), or flat Windows JSON (OTRF, NXLog) | `product: windows`, `service: <channel>` | `ev_windows_<service>` |
 
 Files can be plain text, `.evtx`, `.gz`, or `.zip` (members may themselves be `.gz`).
 Lines longer than 1 MiB, and lines a parser cannot read, are counted as
@@ -152,6 +152,16 @@ them in the watch folder, or use `threatlens ingest Security.evtx`. EVTX is
 recognised by its header, so `--type` is not needed. JSON Lines written by
 `evtx_dump -o jsonl` (one `{"Event": {...}}` record per line) are auto-detected
 too.
+
+**Flat Windows JSON** is read by the same parser: one object per event with
+`Channel` and `EventID` at the top level and the Windows field names beside them,
+as written by the [OTRF Security-Datasets](https://github.com/OTRF/Security-Datasets)
+(Mordor), NXLog's `to_json()` and many Winlogbeat-to-file setups. The time comes
+from `TimeCreated` (a string or `{"SystemTime": ...}`), else `@timestamp`,
+`EventTime` or `TimeGenerated`; `Hostname` and `SourceName` become `Computer` and
+`Provider_Name`. Everything else below applies unchanged.
+`scripts/fetch-datasets.sh` downloads EVTX-ATTACK-SAMPLES and a Windows subset of
+OTRF to try your rules on recorded attacks.
 
 The **channel** decides the log source and the table, using the same channel
 names as pySigma's official Windows pipeline:

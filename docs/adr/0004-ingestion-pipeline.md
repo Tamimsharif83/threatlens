@@ -63,8 +63,9 @@ reported. Limits:
 - compression ratio 200:1 once past 10 MB (bomb detection);
 - at most 10,000 zip members, one level of nesting (`.gz` inside `.zip`),
   no nested zips, no encrypted members;
-- binary files (executables, PDFs, NUL bytes) are refused; Windows EVTX is the one
-  binary format read (Phase 7, see ADR-0010).
+- binary files (executables, PDFs, text with many NUL bytes) are refused; Windows
+  EVTX is the one binary format read (Phase 7, see ADR-0010). A few NUL bytes are
+  tolerated, because web servers log garbage requests verbatim (ADR-0011).
 
 ### 6. Raw lines: zstd with a per-batch dictionary (optional)
 With `TL_STORE_RAW=true`, each line is stored zstd-compressed. Short log lines

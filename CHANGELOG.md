@@ -6,7 +6,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-11-09
+## [1.0.0] - 2026-11-09
+
+Phase 8: hardening and the first stable release.
+
+### Added
+- STRIDE threat model (`docs/threat-model.md`): assets, actors, controls with
+  the tests behind them, and accepted residual risks.
+- Whole-app security tests: every route is checked for login, CSRF and the
+  admin role by walking the route table; every page is requested with hostile
+  query strings (no 5xx, no markup reflected); path tricks, upload names,
+  oversized fields, deep JSON.
+- `scripts/bench/perf_1m.py` and `docs/performance.md`: 1M web lines ingested
+  with detection at ~25,000 lines/s and a 125 MiB peak, UI timings at that size.
+- `scripts/fetch-datasets.sh`: pinned EVTX-ATTACK-SAMPLES (GPL-3.0) and a
+  Windows subset of OTRF Security-Datasets (MIT) into the git-ignored `datasets/`.
+- Flat Windows JSON (`Channel` + `EventID` at the top level, as in OTRF/Mordor
+  and NXLog) is read by the `evtx` parser, auto-detected, routed to the
+  `ev_windows_*` tables.
+- `rules lint` warns about regexes with nested quantifiers such as `(a+)+`.
+- Alert pages show matched events 25 per page; each card lists the rule's fields
+  and key fields, the rest folds away.
+- ADR-0011, and `docs/release-verification.md`: 140 best- and worst-case scenario
+  checks run against the release image (all pass).
+
+### Fixed
+- Security: the hunt console could allocate gigabytes (`printf('%.*c', 1e9, 'x')`);
+  values are now capped at 16 MiB.
+- Security: hunt-console `REGEXP` patterns with nested quantifiers could run for
+  hours; they are refused with an explanation.
+- Security: analysts could read `audit_log` through the hunt console; it is now
+  admin-only there too.
+- Security: the account page did not throttle wrong current passwords; it now
+  shares the login throttle and audit-logs failures.
+- Security (log evasion): one request with NUL bytes (e.g. a TLS handshake sent
+  to an HTTP port) made a whole access log be refused as binary.
+- A hunt query blocked the whole server while it ran; it now runs in a worker
+  thread. Password hashing on the account page too.
+- Numbers beyond 64 bits in URLs (`/alerts/99999999999999999999`,
+  `/search?start=…`) answered 500 instead of 400.
+- A new password over 1,024 characters answered 500.
+- Detection evasion: events stored by a batch that failed half-way were never
+  checked by the rules; they are now.
+- A crash or `docker kill` during an ingest left the batch "running" forever:
+  never checked by the rules and never purged. The next start marks it
+  interrupted and a catch-up job runs the rules on it (migration 0007 records
+  per batch whether detection ran).
+- A full disk during an ingest left the batch "running" and logged a misleading
+  "cannot rollback" error; the batch now fails with "database or disk is full"
+  and the reason is shown in the batch list. Uploads that cannot be saved are
+  refused with a message.
+- The alert filter's rule list made the page wider than a phone screen.
+- Rule-test databases no longer log their migrations at startup.
+
+### Changed
+- Pivot-field indexes are `(field, time)` and top values are grouped per table:
+  the overview at 1M events went from 2.4 s to under 0.2 s. Existing databases
+  are upgraded once at startup.
+- Failed batches show their reason in the batch list.
+
+## 0.8.0 - 2026-11-09
 
 Phase 7: Windows EVTX.
 
@@ -36,7 +95,7 @@ Phase 7: Windows EVTX.
 - Per-table field column cap raised from 400 to 1,000 (Windows logs).
 - Uploads check EVTX by header: `.evtx` names must hold EVTX data and vice versa.
 
-## [0.7.0] - 2026-11-09
+## 0.7.0 - 2026-11-09
 
 Phase 6: ATT&CK coverage and rule metrics.
 
@@ -56,7 +115,7 @@ Phase 6: ATT&CK coverage and rule metrics.
 ### Changed
 - Case findings and reports show technique names from the bundled catalogue.
 
-## [0.6.0] - 2026-11-09
+## 0.6.0 - 2026-11-09
 
 Phase 5: cases and reports.
 
@@ -75,7 +134,7 @@ Phase 5: cases and reports.
   and self-contained, print-ready HTML (no scripts, own restrictive CSP).
 - Docs: ADR-0008.
 
-## [0.5.0] - 2026-11-09
+## 0.5.0 - 2026-11-09
 
 Phase 4: correlation.
 
@@ -96,7 +155,7 @@ Phase 4: correlation.
   file) with near-miss negative fixtures; synthetic auth logs now contain bursts.
 - Docs: ADR-0007, complete `correlation-rules.md`.
 
-## [0.4.0] - 2026-11-09
+## 0.4.0 - 2026-11-09
 
 Phase 3: triage.
 
@@ -125,7 +184,7 @@ Phase 3: triage.
 - Example rule fixtures (`tests/rules/**/*.log`) were excluded by the `*.log` ignore
   rule and missing from git; a test now guards against ignored fixtures.
 
-## [0.3.0] - 2026-11-08
+## 0.3.0 - 2026-11-08
 
 Phase 2: detection.
 
@@ -149,7 +208,7 @@ Phase 2: detection.
   user added to a privileged group, failed SSH login, script upload via the app.
 - Docs: ADR-0005, `writing-rules.md`, `correlation-rules.md`.
 
-## [0.2.0] - 2026-11-08
+## 0.2.0 - 2026-11-08
 
 Phase 1: ingestion and storage.
 
@@ -189,7 +248,7 @@ Phase 1: ingestion and storage.
 ### Changed
 - A generated first-run admin password must be changed at first sign-in.
 
-## [0.1.0] - 2026-11-08
+## 0.1.0 - 2026-11-08
 
 Phase 0: plan and scaffold.
 
@@ -213,10 +272,5 @@ Phase 0: plan and scaffold.
 - CI (lint, types, tests, Docker build, smoke test, Trivy), release workflow
   (multi-arch to GHCR), Dependabot, issue/PR templates, pre-commit hooks.
 
-[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/Tamimsharif83/threatlens/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/Tamimsharif83/threatlens/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Tamimsharif83/threatlens/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Tamimsharif83/threatlens/releases/tag/v1.0.0

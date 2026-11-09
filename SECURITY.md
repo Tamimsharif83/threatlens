@@ -47,5 +47,7 @@ report those upstream.
 - Set `TL_COOKIE_SECURE=always` when served over HTTPS.
 
 The security design is documented in
-[docs/adr/0003-security-baseline.md](docs/adr/0003-security-baseline.md).
-A STRIDE threat model (`docs/threat-model.md`) is part of the v1.0 hardening phase.
+[docs/adr/0003-security-baseline.md](docs/adr/0003-security-baseline.md) and
+[docs/adr/0011-v1-hardening.md](docs/adr/0011-v1-hardening.md). The STRIDE
+threat model, with the tests behind each control and the accepted residual
+risks, is in [docs/threat-model.md](docs/threat-model.md).

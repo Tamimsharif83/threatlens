@@ -77,4 +77,4 @@ See [ADR-0002](adr/0002-storage-engine-and-event-layout.md),
 | `event_tables`, `event_fields`, `ev_*` | events and their catalog (see [schema.md](schema.md)) |
 
 Schema changes are numbered SQL files in `src/threatlens/storage/migrations/`,
-applied in order at startup and tracked with `PRAGMA user_version`.
+applied in order at startup and tracked with `PRAGMA user_version`. Index changes that SQL alone cannot express per table (v1.0: pivot indexes as `(field, tl_ts)`) are applied by `upgrade_pivot_indexes` right after the migrations.

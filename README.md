@@ -12,9 +12,11 @@ rules), and gives you a complete analyst workflow: alert triage → investigatio
 → case timeline → MITRE ATT&CK coverage → incident report. It runs on an 8 GB
 laptop with one `docker run`, fully offline.
 
-> **Status: early development (v0.6.0, Phase 5 of 8).** Ingestion, Sigma
-> detection and correlation, triage, hunting, tuning, cases and incident reports
-> work. ATT&CK coverage and rule metrics arrive next — see the [roadmap](#roadmap).
+> **Status: v1.0.0.** All eight planned phases are done: ingestion (web, Linux,
+> JSON, Windows EVTX), Sigma detection and correlation, triage and hunting, cases
+> and incident reports, ATT&CK coverage and rule metrics, and a security-hardened
+> release ([threat model](docs/threat-model.md), [performance](docs/performance.md),
+> [release verification](docs/release-verification.md): 140 best- and worst-case checks).
 
 ![ThreatLens overview page](docs/images/overview.png)
 
@@ -38,6 +40,19 @@ docker exec threatlens sh -c 'threatlens synth --kind web --lines 20000 -o /data
   threatlens synth --kind ecs --lines 3000 -o /data/tmp/app.jsonl &&
   threatlens ingest /data/tmp/access.log /data/tmp/auth.log /data/tmp/app.jsonl'
 ```
+
+**Real attack logs** (Windows, recorded by researchers; downloaded into a
+git-ignored `datasets/` folder, never redistributed):
+
+```bash
+scripts/fetch-datasets.sh        # EVTX-ATTACK-SAMPLES (GPL-3.0) + OTRF subset (MIT)
+docker cp "datasets/EVTX-ATTACK-SAMPLES/Credential Access" threatlens:/data/inbox/cred-access
+```
+
+ThreatLens ships no Windows rules (writing them is your part): write some, or copy
+them from a SigmaHQ clone with `threatlens rules import-sigmahq <clone>`; new files
+are picked up on **Rules → Reload**, and **Retro-hunt** on a rule's page runs it
+over events already stored.
 
 **Your own logs:** upload them on the *Ingest* page, or mount a folder as the
 watch folder (read-only is fine) and new lines are picked up within seconds:
@@ -100,7 +115,7 @@ Compose file or the documented commands stop binding to localhost.
 
 | Area | What you get | Status |
 |---|---|---|
-| Platform | One container, offline, < 100 MB idle RAM, login with argon2id, roles, audit log | ✅ Phase 0 |
+| Platform | One container, offline, small memory footprint (see [performance](docs/performance.md)), login with argon2id, roles, audit log | ✅ Phase 0 |
 | Ingestion | Apache/Nginx (combined, common, custom formats), ECS JSON Lines, Linux auth, generic JSON + field mapping, `.gz`/`.zip`; drag & drop upload, CLI, watch folder with rotation handling; dedup; retention; ingest reports | ✅ Phase 1 |
 | Users | Admin creates analysts in Settings (one-time password, forced change); no passwords in env vars except the first admin | ✅ Phase 1 |
 | Detection | Sigma rules via pySigma, run on every batch + retro-hunt, alert grouping/throttling, rule tests & lint, compiled SQL shown per rule, SigmaHQ import | ✅ Phase 2 |
@@ -109,6 +124,16 @@ Compose file or the documented commands stop binding to localhost.
 | Cases & reports | Cases from alerts (bulk or single), merged event-time timeline with annotations, ATT&CK findings, IOCs (auto-extracted + manual, CSV/JSON), notes, severity/status/owner; incident report (summary, scope, timeline, findings, IOCs, impact, root cause, recommendations, appendix) as Markdown and print-ready self-contained HTML | ✅ Phase 5 |
 | Coverage & metrics | ATT&CK v20.0 matrix (bundled, offline) with levels for rules / tested / fired, sub-techniques roll up, stale-tag warnings, Navigator layer export; per-rule events, alerts, verdicts, precision and noisiest rules — see [docs/attack-coverage.md](docs/attack-coverage.md) | ✅ Phase 6 |
 | Windows | `.evtx` upload/watch/CLI (also in `.zip`/`.gz`, or `evtx_dump` JSON Lines): Security, Sysmon, PowerShell, System and other channels; Sigma field names + ECS aliases; rules compiled with the official pySigma Windows/Sysmon pipelines (SigmaHQ Windows rules work as written); `.evtx` rule-test fixtures | ✅ Phase 7 |
+| Hardening | STRIDE [threat model](docs/threat-model.md); tests that walk every route for login, CSRF and admin checks; hostile-input sweeps of every page; hunt console memory/regex/role limits; 1M-line [performance run](docs/performance.md) (25k lines/s, 125 MiB peak); attack datasets via `scripts/fetch-datasets.sh`; multi-arch image with SBOM and provenance | ✅ Phase 8 |
+
+### Screenshots
+
+| | |
+|---|---|
+| ![An alert: the rule's fields highlighted, events paged and folded](docs/images/alert.png) | ![A case with its alerts, ATT&CK findings and report export](docs/images/case.png) |
+| **Alert** — why it fired, pivots, events 25 per page | **Case** — alerts, ATT&CK findings, timeline, IOCs, report |
+| ![ATT&CK coverage matrix](docs/images/coverage.png) | ![Read-only SQL hunt console](docs/images/hunt.png) |
+| **ATT&CK coverage** — rules, tested, fired; Navigator export | **Hunt console** — read-only SQL, saved hunts, CSV |
 
 ## Architecture
 
@@ -142,7 +167,7 @@ More detail: [docs/architecture.md](docs/architecture.md) and the
 | ECS JSON Lines | application events with Elastic Common Schema names | [log-formats.md](docs/log-formats.md#ecs-json-lines-ecs-json) |
 | Linux auth | `auth.log`, `secure`: sshd, sudo, su, PAM, useradd/usermod, cron | [log-formats.md](docs/log-formats.md#linux-auth-linux-auth) |
 | Any JSON Lines | with an optional [field mapping](examples/mappings/) | [log-formats.md](docs/log-formats.md#generic-json-lines-json-and-field-mappings) |
-| Windows EVTX | Security, Sysmon, PowerShell, System (any channel); `.evtx`, inside `.zip`/`.gz`, or `evtx_dump` JSON Lines | [log-formats.md](docs/log-formats.md#windows-event-logs-evtx) |
+| Windows EVTX | Security, Sysmon, PowerShell, System (any channel); `.evtx`, inside `.zip`/`.gz`, `evtx_dump` JSON Lines, or flat Windows JSON (OTRF, NXLog) | [log-formats.md](docs/log-formats.md#windows-event-logs-evtx) |
 
 Plain files, `.evtx`, `.gz` and `.zip`. The format is auto-detected or chosen explicitly.
 How events are stored: [docs/schema.md](docs/schema.md).
@@ -228,16 +253,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | 5 | Cases & reports | ✅ done |
 | 6 | ATT&CK coverage & metrics | ✅ done |
 | 7 | Windows EVTX | ✅ done |
-| 8 | Hardening & v1.0.0 release | next |
+| 8 | Hardening & v1.0.0 release | ✅ done |
 
-Non-goals for v1: endpoint agents, clustering, machine learning, cloud
-dependencies, replacing an enterprise SIEM.
+Ideas after 1.0 (not promises): IIS / W3C extended logs, more Linux sources
+(auditd, journald JSON), UTF-16 log files, an API token for scripted uploads.
+
+Non-goals: endpoint agents, clustering, machine learning, cloud dependencies,
+replacing an enterprise SIEM.
 
 ## Security
 
 ThreatLens renders attacker-controlled data and is built with that in mind (strict
 CSP, autoescaping everywhere, CSRF protection, argon2id, a hardened container).
-See [docs/adr/0003-security-baseline.md](docs/adr/0003-security-baseline.md).
+See the [threat model](docs/threat-model.md),
+[ADR-0003](docs/adr/0003-security-baseline.md) and
+[ADR-0011](docs/adr/0011-v1-hardening.md).
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
