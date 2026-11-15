@@ -561,19 +561,20 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.162.2"
+version = "0.162.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
+    { name = "anyio" },
     { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "starlette" },
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/53/f6fed628a0c3d6a284125a93f9145b02ecc2c394735a878b5ad9938c8e17/fastapi-0.162.2.tar.gz", hash = "sha256:9ebd2a69b579141315b2447d8e3f518e6fd909abd6c01cac5cc6b06d5c8841f4", size = 530366, upload-time = "2026-11-07T15:41:39.838Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/7b/ae546e10f153fcf9a6afd8b9fe4730bdfeb8fdcb93178d54122973ef3f4c/fastapi-0.162.5.tar.gz", hash = "sha256:1ca37f64f61c99cebd38636e67525fb721c5e8c1169f07f2a35d73b0a63265d4", size = 531785, upload-time = "2026-11-11T22:29:53.177Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/fb/0dc0f819163bc6b7f9e6802d7d0b1ac180fbbe4e75dbd10655c6a4d77796/fastapi-0.162.2-py3-none-any.whl", hash = "sha256:d0584f9662317e01140df94c64f4bed1d8b059fe35496e30c9c92f70e6e5ff15", size = 151671, upload-time = "2026-11-07T15:41:38.509Z" },
+    { url = "https://files.pythonhosted.org/packages/10/19/5b9abfa67a29b862e509911eef40f4901f78aa48de32ad1f939b5c2b165e/fastapi-0.162.5-py3-none-any.whl", hash = "sha256:5303c67415fde762889ca337db79d27b755b8bd09cef314fa7a4340bb30bfd2b", size = 151782, upload-time = "2026-11-11T22:29:51.47Z" },
 ]
 
 [[package]]
@@ -1290,7 +1291,7 @@ wheels = [
 
 [[package]]
 name = "pysigma"
-version = "2.0.2"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache-community" },
@@ -1303,9 +1304,9 @@ dependencies = [
     { name = "requests" },
     { name = "types-pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/94/2463945ca70f2d5135768c1898545a0df85586d1b0e66cc1842a649134b7/pysigma-2.0.2.tar.gz", hash = "sha256:c8fac45d24adfa14aeebcbab95929066116b2dbcc0816498066af56dda039832", size = 154540, upload-time = "2026-11-01T19:18:02.244Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/1e/4d5d0bac0fba32895222f0d01217629b0057e983f3ebd2bd3b9eeb6a8ae9/pysigma-2.1.0.tar.gz", hash = "sha256:b800923786ace5bc90bd35f488d81b7a2b86e04856f213f5de52c05f876901d1", size = 163103, upload-time = "2026-11-09T23:19:13.516Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/c0/de77e7cbf0b8d9ee161d8a5206c7b5ef56d5fb98caa1e660f14e0e0002ff/pysigma-2.0.2-py3-none-any.whl", hash = "sha256:8fb128597a5d3812219d4dd17c76426bc480ea9875325c5eeeac114d6d8ebbec", size = 186061, upload-time = "2026-11-01T19:18:00.631Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/c6/b7cde993ae35ecbd5d36d2d7a94637cdd070332fb74ff8b308772633ab73/pysigma-2.1.0-py3-none-any.whl", hash = "sha256:3495dcfff8aaefc81f9249a6ebdb3ef823ca84bfa32fa0a8f0ef0421049cced4", size = 197899, upload-time = "2026-11-09T23:19:11.675Z" },
 ]
 
 [[package]]
@@ -1541,10 +1542,10 @@ requires-dist = [
     { name = "argon2-cffi", specifier = ">=25.1,<26" },
     { name = "click", specifier = ">=8.2,<9" },
     { name = "evtx", specifier = ">=0.15.0,<1" },
-    { name = "fastapi", specifier = ">=0.162,<1" },
+    { name = "fastapi", specifier = ">=0.162.5,<1" },
     { name = "jinja2", specifier = ">=3.1.6,<4" },
     { name = "pydantic-settings", specifier = ">=2.16,<3" },
-    { name = "pysigma", specifier = ">=2.0.2,<3" },
+    { name = "pysigma", specifier = ">=2.1.0,<3" },
     { name = "pysigma-backend-sqlite", specifier = ">=2.1.1,<3" },
     { name = "pysigma-pipeline-sysmon", specifier = ">=3.0.0,<4" },
     { name = "pysigma-pipeline-windows", specifier = ">=3.0.0,<4" },
